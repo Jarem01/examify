@@ -1,0 +1,17 @@
+node_modules
+.next
+out
+build
+.logs
+*.log
+.env*
+!.env.example
+.DS_Store
+next-env.d.ts
+*.tsbuildinfo
+
+# local test fixtures and capture output
+artifacts/
+data/fixtures/
+# runtime JSON store, reseeded from lib/seed-data.ts on first run
+data/db.json
