@@ -12,7 +12,16 @@ import type {
   View,
 } from '@/lib/types';
 import { DEFAULT_SETTINGS, loadSettings, resolveAccent, saveSettings } from '@/lib/settings';
-import { createSet, ensureSeed, getProgress, getSet, listSets, recordProgress } from '@/lib/store';
+import {
+  createSet,
+  deleteSet,
+  ensureSeed,
+  getProgress,
+  getSet,
+  listSets,
+  recordProgress,
+  updateSet,
+} from '@/lib/store';
 import Sidebar from './Sidebar';
 import HomeView from './HomeView';
 import SearchView from './SearchView';
@@ -24,6 +33,8 @@ import MatchView from './MatchView';
 import BlastView from './BlastView';
 import MemoryView from './MemoryView';
 import ImportModal, { type ImportPayload } from './ImportModal';
+import EditSetModal, { type EditPayload } from './EditSetModal';
+import CombineModal from './CombineModal';
 import SettingsModal from './SettingsModal';
 import { SearchIcon, SettingsIcon, PlusIcon, SparkIcon } from './icons';
 
@@ -48,6 +59,8 @@ export default function AppShell() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [combineOpen, setCombineOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const pending = useRef<Record<string, PendingPatch>>({});
@@ -229,6 +242,114 @@ export default function AppShell() {
     [],
   );
 
+  const addSet = useCallback((set: StudySet) => {
+    const summary: SetSummary = {
+      id: set.id,
+      title: set.title,
+      description: set.description,
+      subject: set.subject,
+      termCount: set.terms.length,
+      masteredCount: 0,
+      createdAt: set.createdAt,
+      updatedAt: set.updatedAt,
+    };
+    setSets((prev) => [summary, ...prev]);
+  }, []);
+
+  const handleSaveEdit = useCallback(
+    async (payload: EditPayload) => {
+      if (!activeSet) return;
+      try {
+        const updated = await updateSet(activeSet.id, payload);
+        if (!updated) {
+          setToast('Could not update that set.');
+          return;
+        }
+        setActiveSet(updated);
+        setSets((prev) =>
+          prev.map((item) =>
+            item.id === updated.id
+              ? {
+                  ...item,
+                  title: updated.title,
+                  description: updated.description,
+                  termCount: updated.terms.length,
+                  updatedAt: updated.updatedAt,
+                }
+              : item,
+          ),
+        );
+        setEditOpen(false);
+        setToast('Set updated.');
+      } catch {
+        setToast('Could not update that set.');
+      }
+    },
+    [activeSet],
+  );
+
+  const handleCopySet = useCallback(async () => {
+    if (!activeSet) return;
+    const copy = await createSet({
+      title: `${activeSet.title} (copy)`,
+      description: activeSet.description,
+      subject: activeSet.subject,
+      terms: activeSet.terms.map((term) => ({ term: term.term, definition: term.definition })),
+    });
+    addSet(copy);
+    setActiveSet(copy);
+    setView({ kind: 'set', setId: copy.id });
+    setToast(`Copied “${activeSet.title}”.`);
+  }, [activeSet, addSet]);
+
+  const handleDeleteSet = useCallback(async () => {
+    if (!activeSet) return;
+    const { id, title } = activeSet;
+    const removed = await deleteSet(id);
+    if (!removed) {
+      setToast('Could not delete that set.');
+      return;
+    }
+    setSets((prev) => prev.filter((item) => item.id !== id));
+    setActiveSet(null);
+    setView({ kind: 'home' });
+    setToast(`Deleted “${title}”.`);
+  }, [activeSet]);
+
+  const handleCombine = useCallback(
+    async (ids: string[]) => {
+      if (!activeSet || ids.length === 0) return;
+      const others = (await Promise.all(ids.map((id) => getSet(id)))).filter(
+        (item): item is StudySet => Boolean(item),
+      );
+      if (others.length === 0) {
+        setToast('Could not load those sets.');
+        return;
+      }
+      const seen = new Set<string>();
+      const terms = [...activeSet.terms, ...others.flatMap((item) => item.terms)]
+        .filter((term) => {
+          const key = `${term.term}\u0000${term.definition}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .map((term) => ({ term: term.term, definition: term.definition }));
+      const merged = await createSet({
+        title: `${activeSet.title} + ${others.length} more`,
+        description: `Combined with ${others.map((item) => item.title).join(', ')}`,
+        subject: activeSet.subject,
+        terms,
+      });
+      addSet(merged);
+      setCombineOpen(false);
+      setActiveSet(merged);
+      setView({ kind: 'set', setId: merged.id });
+      setToast(`Combined into ${merged.terms.length} cards.`);
+    },
+    [activeSet, addSet],
+  );
+
   const navigate = useCallback((next: View) => setView(next), []);
 
   const targetSetId = activeSet?.id ?? sets[0]?.id ?? null;
@@ -356,6 +477,11 @@ export default function AppShell() {
                 onMode={(mode) => openMode(activeSet.id, mode)}
                 onImport={() => setImportOpen(true)}
                 onHome={() => setView({ kind: 'home' })}
+                onEdit={() => setEditOpen(true)}
+                onCopy={handleCopySet}
+                onDelete={handleDeleteSet}
+                onCombine={() => setCombineOpen(true)}
+                onNotify={setToast}
               />
             ) : (
               <LoadingPanel label="Loading set…" />
@@ -373,6 +499,19 @@ export default function AppShell() {
           onClose={() => setImportOpen(false)}
           onCreate={handleCreate}
           defaultTitle="Imported study set"
+        />
+      ) : null}
+
+      {editOpen && activeSet ? (
+        <EditSetModal set={activeSet} onClose={() => setEditOpen(false)} onSave={handleSaveEdit} />
+      ) : null}
+
+      {combineOpen && activeSet ? (
+        <CombineModal
+          sets={sets}
+          currentSetId={activeSet.id}
+          onClose={() => setCombineOpen(false)}
+          onCombine={handleCombine}
         />
       ) : null}
 

@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import type { SetProgress, StudyMode, StudySet } from '@/lib/types';
 import { pluralize } from '@/lib/utils';
+import { copyText, downloadSet, embedSnippet, printSet } from '@/lib/setIO';
+import SetMenu from './SetMenu';
 import {
   ArrowLeftIcon,
   BlastIcon,
@@ -21,6 +23,11 @@ interface SetViewProps {
   onMode: (mode: StudyMode) => void;
   onImport: () => void;
   onHome: () => void;
+  onEdit: () => void;
+  onCopy: () => void;
+  onDelete: () => void;
+  onCombine: () => void;
+  onNotify: (message: string) => void;
 }
 
 const MODES: { mode: StudyMode; title: string; desc: string; bg: string }[] = [
@@ -43,7 +50,18 @@ const ICONS: Record<StudyMode, typeof CardsIcon> = {
   charms: CharmsIcon,
 };
 
-export default function SetView({ set, progress, onMode, onImport, onHome }: SetViewProps) {
+export default function SetView({
+  set,
+  progress,
+  onMode,
+  onImport,
+  onHome,
+  onEdit,
+  onCopy,
+  onDelete,
+  onCombine,
+  onNotify,
+}: SetViewProps) {
   const [showAll, setShowAll] = useState(false);
   const mastered = useMemo(
     () => set.terms.filter((term) => progress?.terms[term.id]?.learned).length,
@@ -87,6 +105,22 @@ export default function SetView({ set, progress, onMode, onImport, onHome }: Set
             <PlusIcon size={16} />
             Import
           </button>
+          <SetMenu
+            title={set.title}
+            onEdit={onEdit}
+            onCopy={onCopy}
+            onDelete={onDelete}
+            onCombine={onCombine}
+            onPrint={() => printSet(set)}
+            onExport={() => {
+              downloadSet(set);
+              onNotify(`Exported ${set.terms.length} cards as a .txt file.`);
+            }}
+            onEmbed={async () => {
+              const copied = await copyText(embedSnippet(set));
+              onNotify(copied ? 'Embed code copied to the clipboard.' : 'Could not copy the embed code.');
+            }}
+          />
         </div>
       </section>
 

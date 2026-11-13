@@ -107,6 +107,14 @@ export const CloseIcon = (props: IconProps) => (
   </svg>
 );
 
+export const TrashIcon = (props: IconProps) => (
+  <svg {...base(props)}>
+    <path d="M4 7h16M9.5 7V4.5h5V7" />
+    <path d="M6.5 7 7.5 20h9L17.5 7" />
+    <path d="M10.5 11v5M13.5 11v5" />
+  </svg>
+);
+
 export const VolumeIcon = (props: IconProps) => (
   <svg {...base(props)}>
     <path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z" />

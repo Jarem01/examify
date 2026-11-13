@@ -4,7 +4,7 @@ import { shuffle } from './utils';
 export const LEARN_SECTION_MIN = 7;
 export const LEARN_SECTION_MAX = 10;
 
-/** Split the set into rounds of 7–10 new terms. */
+/** Split a list of terms into legs of 7–10 cards. */
 export function buildSections(terms: Term[], size: number): Term[][] {
   const safeSize = Math.min(LEARN_SECTION_MAX, Math.max(LEARN_SECTION_MIN, Math.round(size)));
   const sections: Term[][] = [];
@@ -15,12 +15,14 @@ export function buildSections(terms: Term[], size: number): Term[][] {
 }
 
 export interface LearnState {
+  /** Every term in this session — needed to build review legs later. */
+  pool: Term[];
   sections: Term[][];
   sectionIndex: number;
-  /** Term ids to ask during this pass. */
+  /** Term ids still to be asked in the current leg. Each appears at most once. */
   queue: string[];
-  /** Terms that still need another correct answer before the pass ends. */
-  nextQueue: string[];
+  /** Terms missed in this leg; asked again once the fresh cards are done. */
+  retryQueue: string[];
   pass: number;
   streaks: Record<string, number>;
   learned: string[];
@@ -29,19 +31,21 @@ export interface LearnState {
   missed: number;
   streak: number;
   bestStreak: number;
-  passHadMiss: boolean;
   retryNotice: boolean;
   sectionDone: boolean;
   complete: boolean;
+  /** True once the initial legs are done and we are cycling through unmastered terms. */
+  reviewRound: boolean;
 }
 
 export function createLearnState(terms: Term[], size: number): LearnState {
   const sections = buildSections(terms, size);
   return {
+    pool: terms,
     sections,
     sectionIndex: 0,
     queue: shuffle(sections[0] ?? []).map((term) => term.id),
-    nextQueue: [],
+    retryQueue: [],
     pass: 1,
     streaks: {},
     learned: [],
@@ -50,10 +54,10 @@ export function createLearnState(terms: Term[], size: number): LearnState {
     missed: 0,
     streak: 0,
     bestStreak: 0,
-    passHadMiss: false,
     retryNotice: false,
     sectionDone: sections.length === 0,
     complete: sections.length === 0,
+    reviewRound: false,
   };
 }
 
@@ -74,34 +78,37 @@ export interface AnswerOutcome {
   brokeStreak: boolean;
 }
 
+/**
+ * Record an answer for the current leg.
+ *
+ * A card is asked once per leg. A correct answer removes it for the rest of the
+ * leg; a missed card joins the retry queue and is asked again — repeatedly —
+ * once the leg's fresh cards have all been shown.
+ */
 export function applyLearnAnswer(state: LearnState, termId: string, isCorrect: boolean): AnswerOutcome {
   const previous = state.streaks[termId] ?? 0;
   const nextStreak = isCorrect ? previous + 1 : 0;
   const learnedNow = nextStreak >= 2 && !state.learned.includes(termId);
   const streaks = { ...state.streaks, [termId]: nextStreak };
+
   const queue = state.queue.filter((id) => id !== termId);
-  const nextQueue = learnedNow ? [...state.nextQueue] : [...state.nextQueue, termId];
+  const retryQueue = isCorrect ? [...state.retryQueue] : [...state.retryQueue, termId];
 
   let pass = state.pass;
   let retryNotice = false;
   let sectionDone = state.sectionDone;
-  let complete = state.complete;
   let workingQueue = queue;
-  let workingNext = nextQueue;
-  let passHadMiss = state.passHadMiss || !isCorrect;
+  let workingRetry = retryQueue;
 
   if (workingQueue.length === 0) {
-    if (workingNext.length > 0) {
-      workingQueue = shuffle(workingNext);
-      workingNext = [];
+    if (workingRetry.length > 0) {
+      workingQueue = shuffle(workingRetry);
+      workingRetry = [];
       pass += 1;
-      retryNotice = passHadMiss;
-      passHadMiss = false;
+      retryNotice = true;
     } else {
       sectionDone = true;
-      complete = state.sectionIndex >= state.sections.length - 1;
       retryNotice = false;
-      passHadMiss = false;
     }
   }
 
@@ -110,7 +117,7 @@ export function applyLearnAnswer(state: LearnState, termId: string, isCorrect: b
       ...state,
       streaks,
       queue: workingQueue,
-      nextQueue: workingNext,
+      retryQueue: workingRetry,
       pass,
       learned: learnedNow ? [...state.learned, termId] : state.learned,
       answered: state.answered + 1,
@@ -118,33 +125,55 @@ export function applyLearnAnswer(state: LearnState, termId: string, isCorrect: b
       missed: state.missed + (isCorrect ? 0 : 1),
       streak: isCorrect ? state.streak + 1 : 0,
       bestStreak: Math.max(state.bestStreak, isCorrect ? state.streak + 1 : 0),
-      passHadMiss,
       retryNotice,
       sectionDone,
-      complete,
+      complete: sectionDone && state.learned.length + (learnedNow ? 1 : 0) >= state.pool.length,
     },
     justLearned: learnedNow,
     brokeStreak: !isCorrect && previous > 0,
   };
 }
 
-/** Advance from a completed section to the next batch of new terms. */
+/**
+ * Move on from a finished leg. When the planned legs run out, the terms that
+ * are not mastered yet become a new set of legs, so two correct answers can
+ * still be earned without ever repeating a card inside one leg.
+ */
 export function nextSection(state: LearnState): LearnState {
   if (!state.sectionDone) return state;
-  if (state.sectionIndex >= state.sections.length - 1) {
-    return { ...state, complete: true, sectionDone: true };
+
+  if (state.sectionIndex < state.sections.length - 1) {
+    const sectionIndex = state.sectionIndex + 1;
+    return {
+      ...state,
+      sectionIndex,
+      queue: shuffle(state.sections[sectionIndex] ?? []).map((term) => term.id),
+      retryQueue: [],
+      pass: 1,
+      retryNotice: false,
+      sectionDone: false,
+      complete: false,
+    };
   }
-  const sectionIndex = state.sectionIndex + 1;
+
+  const remaining = state.pool.filter((term) => !state.learned.includes(term.id));
+  if (remaining.length === 0) {
+    return { ...state, complete: true, sectionDone: true, retryNotice: false };
+  }
+
+  const size = state.sections[0]?.length ?? LEARN_SECTION_MIN;
+  const sections = buildSections(shuffle(remaining), size);
   return {
     ...state,
-    sectionIndex,
-    queue: shuffle(state.sections[sectionIndex] ?? []).map((term) => term.id),
-    nextQueue: [],
+    sections,
+    sectionIndex: 0,
+    queue: (sections[0] ?? []).map((term) => term.id),
+    retryQueue: [],
     pass: 1,
-    passHadMiss: false,
     retryNotice: false,
     sectionDone: false,
     complete: false,
+    reviewRound: true,
   };
 }
 

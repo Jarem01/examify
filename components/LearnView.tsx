@@ -6,6 +6,7 @@ import { applyLearnAnswer, createLearnState, currentTerm, nextSection } from '@/
 import { buildLearnQuestion } from '@/lib/questions';
 import type { Question, SetProgress, Settings, StudySet, Term } from '@/lib/types';
 import { speak } from '@/lib/utils';
+import { playFeedback } from '@/lib/sfx';
 import ModeHeader from './ModeHeader';
 import { CheckIcon, FlameIcon, LearnIcon, TrophyIcon, VolumeIcon } from './icons';
 
@@ -47,6 +48,15 @@ export default function LearnView({ set, settings, progress, onAnswer, onExit, o
 
   const answeredRef = useRef(false);
   const questionRef = useRef<Question | null>(null);
+  const [flash, setFlash] = useState<'good' | 'bad' | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+    },
+    [],
+  );
 
   const term: Term | null = currentTerm(state);
   const termId = term?.id ?? null;
@@ -85,8 +95,12 @@ export default function LearnView({ set, settings, progress, onAnswer, onExit, o
       setState(outcome.state);
       setFeedback({ correct, detail });
       onAnswer(term.id, correct, outcome.state.streaks[term.id] ?? 0);
+      playFeedback(correct, settings.sound);
+      setFlash(correct ? 'good' : 'bad');
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      flashTimer.current = setTimeout(() => setFlash(null), 900);
     },
-    [onAnswer, state, term],
+    [onAnswer, settings.sound, state, term],
   );
 
   const advance = useCallback(() => {
@@ -168,11 +182,12 @@ export default function LearnView({ set, settings, progress, onAnswer, onExit, o
         <div style={{ flex: 1, minWidth: 240 }}>
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
             <span className="eyebrow">
-              Round {Math.min(state.sectionIndex + 1, state.sections.length)} of {state.sections.length}
+              {state.reviewRound ? 'Review' : 'Round'} {Math.min(state.sectionIndex + 1, state.sections.length)} of{' '}
+              {state.sections.length}
             </span>
             <span className="small muted">Pass {state.pass}</span>
           </div>
-          <div className="segments" aria-hidden="true">
+          <div className={`segments${flash ? ` flash-${flash}` : ''}`} aria-hidden="true">
             {state.sections.map((_, index) => {
               const done = index < state.sectionIndex || (index === state.sectionIndex && state.sectionDone);
               const current = index === state.sectionIndex && !state.sectionDone;
@@ -229,7 +244,7 @@ export default function LearnView({ set, settings, progress, onAnswer, onExit, o
             </div>
             <h2 className="h2">Round {state.sectionIndex + 1} complete</h2>
             <p className="muted" style={{ marginTop: 8 }}>
-              Every card in this round has now been answered correctly twice in a row.
+              Every card in this round is done. Cards you missed were retried until you got them right.
             </p>
             <div className="row" style={{ justifyContent: 'center', marginTop: 18, gap: 10 }}>
               <span className="chip chip-good">{state.correct} correct</span>
@@ -395,7 +410,7 @@ export default function LearnView({ set, settings, progress, onAnswer, onExit, o
             <div className={`feedback ${feedback.correct ? 'good' : 'bad'}`} role="status" aria-live="polite">
               <span aria-hidden="true">{feedback.correct ? '✓' : '✕'}</span>
               <div>
-                <div>{feedback.correct ? 'Correct!' : "You missed this question — let's try it again."}</div>
+                <div>{feedback.correct ? 'Correct!' : 'Not quite — this card comes back at the end of the round.'}</div>
                 {feedback.detail ? (
                   <div className="small" style={{ opacity: 0.85, marginTop: 3 }}>
                     {feedback.detail}
