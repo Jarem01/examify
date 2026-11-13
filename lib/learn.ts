@@ -86,8 +86,19 @@ export function restoreLearnState(saved: SavedLearnState, terms: Term[]): LearnS
   return { ...(rest as Omit<LearnState, 'pool' | 'sections'>), pool, sections };
 }
 
-export function createLearnState(terms: Term[], size: number): LearnState {
+export function createLearnState(
+  terms: Term[],
+  size: number,
+  /** Streaks already earned in earlier sessions, so mastery can carry over. */
+  priorStreaks: Record<string, number> = {},
+): LearnState {
   const sections = buildSections(terms, size);
+  const streaks: Record<string, number> = {};
+  terms.forEach((term) => {
+    const prior = priorStreaks[term.id] ?? 0;
+    // Cap at one so entering Learn never marks a card learned by itself.
+    if (prior > 0) streaks[term.id] = Math.min(1, prior);
+  });
   return {
     pool: terms,
     sections,
@@ -95,7 +106,7 @@ export function createLearnState(terms: Term[], size: number): LearnState {
     queue: shuffle(sections[0] ?? []).map((term) => term.id),
     retryQueue: [],
     pass: 1,
-    streaks: {},
+    streaks,
     learned: [],
     answered: 0,
     correct: 0,

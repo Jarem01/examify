@@ -45,12 +45,23 @@ export default function LearnView({
 }: LearnViewProps) {
   /* Terms already mastered before this session are skipped so the round stays useful. */
   const masteredBefore = useMemo(() => {
+    const inScope = new Set(set.terms.map((term) => term.id));
     const mastered = new Set<string>();
     Object.entries(progress?.terms ?? {}).forEach(([id, value]) => {
-      if (value.learned) mastered.add(id);
+      if (value.learned && inScope.has(id)) mastered.add(id);
     });
     return mastered;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* Correct answers from earlier sessions carry over: mastery needs two in a row. */
+  const priorStreaks = useMemo(() => {
+    const streaks: Record<string, number> = {};
+    Object.entries(progress?.terms ?? {}).forEach(([id, value]) => {
+      if (value.streak > 0) streaks[id] = value.streak;
+    });
+    return streaks;
+  }, [progress]);
 
   /* Resume the saved round for this set/section if one is still open. */
   const restoredState = useMemo(() => {
@@ -66,7 +77,7 @@ export default function LearnView({
   }, [restoredState, set.terms, masteredBefore]);
 
   const [state, setState] = useState<LearnState>(
-    () => restoredState ?? createLearnState(sessionTerms, settings.sectionSize),
+    () => restoredState ?? createLearnState(sessionTerms, settings.sectionSize, priorStreaks),
   );
 
   const [resumed, setResumed] = useState(() => Boolean(restoredState));
@@ -165,9 +176,9 @@ export default function LearnView({
     setFeedback(null);
     setSelected([]);
     setQuestion(null);
-    setState(createLearnState(sessionTerms, settings.sectionSize));
+    setState(createLearnState(sessionTerms, settings.sectionSize, priorStreaks));
     setNonce((value) => value + 1);
-  }, [sessionTerms, settings.sectionSize]);
+  }, [sessionTerms, settings.sectionSize, priorStreaks]);
 
   const startOver = useCallback(() => {
     clearSession(sessionKey);
