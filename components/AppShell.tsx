@@ -389,7 +389,14 @@ export default function AppShell() {
       case 'flashcards':
         return <FlashcardsView set={activeSet} settings={settings} onExit={exit} />;
       case 'test':
-        return <TestView set={activeSet} sound={settings.sound} onExit={exit} />;
+        return (
+          <TestView
+            set={activeSet}
+            sound={settings.sound}
+            direction={settings.direction}
+            onExit={exit}
+          />
+        );
       case 'match':
         return <MatchView set={activeSet} sound={settings.sound} onExit={exit} />;
       case 'blast':

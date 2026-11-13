@@ -41,7 +41,7 @@ export default function SettingsModal({ settings, onChange, onClose }: SettingsM
           <div>
             <h2 id="settings-title">Settings</h2>
             <p className="muted small" style={{ marginTop: 4 }}>
-              Theme, question types and round size.
+              Theme, question types, direction and round size.
             </p>
           </div>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close settings">
@@ -143,6 +143,34 @@ export default function SettingsModal({ settings, onChange, onClose }: SettingsM
                 label="Select all that apply questions"
                 onToggle={() => onChange({ allowSelectAll: !settings.allowSelectAll })}
               />
+            </div>
+          </section>
+
+          <hr className="divider" />
+
+          <section>
+            <h3 className="h3" style={{ marginBottom: 4 }}>
+              Question direction
+            </h3>
+            <p className="muted small" style={{ marginBottom: 12 }}>
+              Which side of the card you are asked from in Learn and Test. Mixed switches per question.
+            </p>
+            <div className="seg-picker">
+              {[
+                { value: 'term-first' as const, label: 'Term → definition' },
+                { value: 'definition-first' as const, label: 'Definition → term' },
+                { value: 'mixed' as const, label: 'Mixed' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={settings.direction === option.value ? 'active' : ''}
+                  aria-pressed={settings.direction === option.value}
+                  onClick={() => onChange({ direction: option.value })}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
           </section>
 

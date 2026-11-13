@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { buildTest } from '@/lib/questions';
-import type { MatchingQuestion, Question, StudySet } from '@/lib/types';
+import type { MatchingQuestion, Question, QuestionDirection, StudySet } from '@/lib/types';
 import { shuffle, speak } from '@/lib/utils';
 import { playFeedback } from '@/lib/sfx';
 import ModeHeader from './ModeHeader';
@@ -11,6 +11,7 @@ import { TestIcon, VolumeIcon } from './icons';
 interface TestViewProps {
   set: StudySet;
   sound: boolean;
+  direction: QuestionDirection;
   onExit: () => void;
 }
 
@@ -44,7 +45,7 @@ function answerSummary(question: Question, answer: Answer): string {
   return 'No answer';
 }
 
-export default function TestView({ set, sound, onExit }: TestViewProps) {
+export default function TestView({ set, sound, direction, onExit }: TestViewProps) {
   const [phase, setPhase] = useState<'setup' | 'taking' | 'report'>('setup');
   const [count, setCount] = useState<number>(20);
   const [formats, setFormats] = useState({ mcq: true, tf: true, matching: true });
@@ -53,11 +54,11 @@ export default function TestView({ set, sound, onExit }: TestViewProps) {
 
   const start = useCallback(() => {
     const total = count === -1 ? set.terms.length : Math.min(count, set.terms.length);
-    setQuestions(buildTest(set.terms, total, formats));
+    setQuestions(buildTest(set.terms, total, formats, direction));
     setAnswers({});
     setPhase('taking');
     window.scrollTo({ top: 0 });
-  }, [count, formats, set.terms]);
+  }, [count, formats, set.terms, direction]);
 
   const submit = useCallback(() => {
     setPhase('report');
@@ -365,41 +366,47 @@ function MatchingInput({
   );
   const [activeTerm, setActiveTerm] = useState<string | null>(null);
 
-  const usedDefinitions = new Set(Object.values(value));
+  // Definition-first flips the columns; the link is still termId → termId.
+  const termLeads = question.promptSide !== 'definition';
+  const leftColumn = termLeads ? terms : definitions;
+  const rightColumn = termLeads ? definitions : terms;
+  const usedRight = new Set(Object.values(value));
 
   return (
     <div>
-      <p className="question-hint">Click a term, then its definition</p>
+      <p className="question-hint">
+        {termLeads ? 'Click a term, then its definition' : 'Click a definition, then its term'}
+      </p>
       <div className="match-pairs">
         <div className="match-col">
-          {terms.map((term) => (
+          {leftColumn.map((item) => (
             <button
-              key={term.id}
+              key={item.id}
               type="button"
-              className={`pair-chip${activeTerm === term.id ? ' active' : ''}${value[term.id] ? ' linked' : ''}`}
-              onClick={() => setActiveTerm(term.id)}
+              className={`pair-chip${activeTerm === item.id ? ' active' : ''}${value[item.id] ? ' linked' : ''}`}
+              onClick={() => setActiveTerm(item.id)}
             >
-              {term.text}
+              {item.text}
             </button>
           ))}
         </div>
         <div className="match-col">
-          {definitions.map((definition) => {
-            const linkedTerm = Object.entries(value).find(([, definitionId]) => definitionId === definition.id)?.[0];
+          {rightColumn.map((item) => {
+            const linkedTerm = Object.entries(value).find(([, targetId]) => targetId === item.id)?.[0];
             return (
               <button
-                key={definition.id}
+                key={item.id}
                 type="button"
-                className={`pair-chip${usedDefinitions.has(definition.id) ? ' linked' : ''}`}
+                className={`pair-chip${usedRight.has(item.id) ? ' linked' : ''}`}
                 disabled={!activeTerm}
                 onClick={() => {
                   if (!activeTerm) return;
-                  onChange({ ...value, [activeTerm]: definition.id });
-                  playFeedback(definition.id === activeTerm, sound);
+                  onChange({ ...value, [activeTerm]: item.id });
+                  playFeedback(item.id === activeTerm, sound);
                   setActiveTerm(null);
                 }}
               >
-                {definition.text}
+                {item.text}
                 {linkedTerm ? <span className="pair-index" style={{ marginLeft: 8 }}>✓</span> : null}
               </button>
             );

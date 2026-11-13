@@ -3,6 +3,7 @@ import type {
   MatchingQuestion,
   MultipleChoiceQuestion,
   Question,
+  QuestionDirection,
   SelectAllQuestion,
   Term,
   TrueFalseQuestion,
@@ -129,14 +130,23 @@ export function buildMultipleChoice(
   };
 }
 
-export function buildTrueFalse(target: Term, pool: Term[]): TrueFalseQuestion {
+export function buildTrueFalse(
+  target: Term,
+  pool: Term[],
+  direction: 'term' | 'definition' = 'term',
+): TrueFalseQuestion {
   const makeTrue = Math.random() < 0.5;
+  // Definition-first puts the definition before the term so the asked side leads.
+  const pair = (definition: string) =>
+    direction === 'definition'
+      ? `${definition} — ${target.term}`
+      : `${target.term} — ${definition}`;
   if (makeTrue) {
     return {
       type: 'tf',
       id: `tf_${target.id}_${Math.random().toString(36).slice(2, 7)}`,
       termId: target.id,
-      statement: `${target.term} — ${target.definition}`,
+      statement: pair(target.definition),
       answer: true,
       correctDefinition: target.definition,
     };
@@ -147,7 +157,7 @@ export function buildTrueFalse(target: Term, pool: Term[]): TrueFalseQuestion {
     type: 'tf',
     id: `tf_${target.id}_${Math.random().toString(36).slice(2, 7)}`,
     termId: target.id,
-    statement: `${target.term} — ${definition}`,
+    statement: pair(definition),
     answer: false,
     correctDefinition: target.definition,
   };
@@ -208,11 +218,15 @@ export function buildSelectAll(target: Term, pool: Term[], section: Term[]): Sel
   };
 }
 
-export function buildMatching(targets: Term[]): MatchingQuestion {
+export function buildMatching(
+  targets: Term[],
+  direction: 'term' | 'definition' = 'term',
+): MatchingQuestion {
   return {
     type: 'matching',
     id: `match_${Math.random().toString(36).slice(2, 8)}`,
     termId: targets[0]?.id ?? '',
+    promptSide: direction,
     pairs: targets.map((term) => ({
       termId: term.id,
       term: term.term,
@@ -225,11 +239,18 @@ export function randomDirection(): 'term' | 'definition' {
   return Math.random() < 0.72 ? 'term' : 'definition';
 }
 
+/** Turn the saved setting into the side to ask for; mixed rolls per question. */
+export function resolveDirection(direction: QuestionDirection = 'mixed'): 'term' | 'definition' {
+  if (direction === 'mixed') return randomDirection();
+  return direction === 'definition-first' ? 'definition' : 'term';
+}
+
 export function buildLearnQuestion(
   target: Term,
   pool: Term[],
   section: Term[],
   allowed: { mcq: boolean; tf: boolean; sata: boolean },
+  direction: QuestionDirection = 'mixed',
 ): Question {
   const kinds: Array<'mcq' | 'tf' | 'sata'> = [];
   if (allowed.mcq) kinds.push('mcq');
@@ -237,9 +258,10 @@ export function buildLearnQuestion(
   // Select-all needs enough terms to build honest false pairings.
   if (allowed.sata && pool.length >= 4) kinds.push('sata');
   const kind = kinds.length ? kinds[Math.floor(Math.random() * kinds.length)] : 'mcq';
-  if (kind === 'tf') return buildTrueFalse(target, pool);
+  const side = resolveDirection(direction);
+  if (kind === 'tf') return buildTrueFalse(target, pool, side);
   if (kind === 'sata') return buildSelectAll(target, pool, section);
-  return buildMultipleChoice(target, pool, randomDirection());
+  return buildMultipleChoice(target, pool, side);
 }
 
 /**
@@ -251,6 +273,7 @@ export function buildTest(
   terms: Term[],
   count: number,
   formats: { mcq: boolean; tf: boolean; matching: boolean },
+  direction: QuestionDirection = 'mixed',
 ): Question[] {
   const pool = terms;
   if (pool.length === 0 || count <= 0) return [];
@@ -281,10 +304,11 @@ export function buildTest(
 
   for (let index = 0; index < target; index += 1) {
     let kind = active[index % active.length];
+    const side = resolveDirection(direction);
     if (kind === 'matching') {
       const group = take(4);
       if (group.length >= 3) {
-        questions.push(buildMatching(group));
+        questions.push(buildMatching(group, side));
         continue;
       }
       kind = 'mcq';
@@ -292,7 +316,7 @@ export function buildTest(
     const [term] = take(1);
     if (!term) break;
     questions.push(
-      kind === 'tf' ? buildTrueFalse(term, pool) : buildMultipleChoice(term, pool, randomDirection()),
+      kind === 'tf' ? buildTrueFalse(term, pool, side) : buildMultipleChoice(term, pool, side),
     );
   }
 

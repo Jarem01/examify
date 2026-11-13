@@ -21,6 +21,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sectionSize: 7,
   sound: true,
   autoSpeak: false,
+  direction: 'mixed',
 };
 
 const STORAGE_KEY = 'examify.settings.v1';

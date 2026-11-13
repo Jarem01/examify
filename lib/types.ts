@@ -57,6 +57,9 @@ export interface ProgressState {
 
 export type AccentName = 'indigo' | 'green' | 'coral';
 
+/** Which side of a card is shown first. */
+export type QuestionDirection = 'term-first' | 'definition-first' | 'mixed';
+
 export interface Settings {
   accent: AccentName;
   customAccent: string | null;
@@ -66,6 +69,7 @@ export interface Settings {
   sectionSize: number;
   sound: boolean;
   autoSpeak: boolean;
+  direction: QuestionDirection;
 }
 
 export type StudyMode =
@@ -126,6 +130,8 @@ export interface MatchingQuestion {
   type: 'matching';
   id: string;
   termId: string;
+  /** Column listed on the left; the pairs themselves are direction-agnostic. */
+  promptSide?: 'term' | 'definition';
   pairs: { termId: string; term: string; definition: string }[];
 }
 

@@ -72,17 +72,28 @@ export default function LearnView({ set, settings, progress, onAnswer, onExit, o
     if (!activeTerm) return;
     if (questionRef.current?.termId === activeTerm.id) return;
 
-    const next = buildLearnQuestion(activeTerm, set.terms, section, {
-      mcq: settings.allowMultipleChoice,
-      tf: settings.allowTrueFalse,
-      sata: settings.allowSelectAll,
-    });
+    const next = buildLearnQuestion(
+      activeTerm,
+      set.terms,
+      section,
+      {
+        mcq: settings.allowMultipleChoice,
+        tf: settings.allowTrueFalse,
+        sata: settings.allowSelectAll,
+      },
+      settings.direction,
+    );
     questionRef.current = next;
     setQuestion(next);
     setSelected([]);
     setFeedback(null);
     setAnswered(false);
-    if (settings.autoSpeak) speak(activeTerm.term, settings.sound);
+    // Speak the side being asked, never the answer side.
+    if (settings.autoSpeak) {
+      const spoken =
+        next.type === 'mcq' ? next.prompt : next.type === 'tf' ? next.statement : activeTerm.term;
+      speak(spoken, settings.sound);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [termId, state.sectionIndex, nonce]);
 
@@ -280,7 +291,9 @@ export default function LearnView({ set, settings, progress, onAnswer, onExit, o
                 className="icon-btn"
                 style={{ width: 34, height: 34 }}
                 aria-label="Read this card aloud"
-                onClick={() => speak(term?.term ?? '', settings.sound)}
+                onClick={() =>
+                  speak(question.type === 'mcq' ? question.prompt : term?.term ?? '', settings.sound)
+                }
               >
                 <VolumeIcon size={16} />
               </button>
