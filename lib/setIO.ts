@@ -1,8 +1,5 @@
 import type { StudySet } from './types';
 
-/** The published app, used for embed snippets. */
-export const APP_URL = 'https://jarem01.github.io/examify/';
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -69,21 +66,3 @@ export function printSet(set: StudySet): void {
   win.print();
 }
 
-/**
- * Sets live in the browser, so an embed can only point at the app itself.
- * The snippet leans on the published site rather than the local file.
- */
-export function embedSnippet(set: StudySet): string {
-  return `<iframe src="${APP_URL}" width="100%" height="640" title="Examify — ${escapeHtml(
-    set.title,
-  )}" style="border:0;border-radius:16px;max-width:960px"></iframe>`;
-}
-
-export async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}

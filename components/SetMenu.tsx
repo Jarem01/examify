@@ -8,7 +8,6 @@ interface SetMenuProps {
   onPrint: () => void;
   onCombine: () => void;
   onExport: () => void;
-  onEmbed: () => void;
   onDelete: () => void;
   title: string;
 }
@@ -37,7 +36,6 @@ const ICONS = {
   print: 'M7 8V3h10v5M7 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v7H7z',
   combine: 'M4 6h7v7H4zM13 11h7v7h-7zM11 9l3 3',
   export: 'M12 3v12M8 11l4 4 4-4M4 19h16',
-  embed: 'M9 8l-4 4 4 4M15 8l4 4-4 4',
   trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6',
 };
 
@@ -47,7 +45,6 @@ export default function SetMenu({
   onPrint,
   onCombine,
   onExport,
-  onEmbed,
   onDelete,
   title,
 }: SetMenuProps) {
@@ -116,9 +113,6 @@ export default function SetMenu({
           </button>
           <button type="button" role="menuitem" onClick={() => run(onExport)}>
             <Glyph path={ICONS.export} /> Export
-          </button>
-          <button type="button" role="menuitem" onClick={() => run(onEmbed)}>
-            <Glyph path={ICONS.embed} /> Embed
           </button>
           <div className="menu-sep" />
           {confirming ? (

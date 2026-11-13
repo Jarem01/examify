@@ -4,11 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { pickDistractors } from '@/lib/questions';
 import type { StudySet, Term } from '@/lib/types';
 import { shuffle } from '@/lib/utils';
+import { playFeedback } from '@/lib/sfx';
 import ModeHeader from './ModeHeader';
 import { BlastIcon } from './icons';
 
 interface BlastViewProps {
   set: StudySet;
+  sound: boolean;
   onExit: () => void;
 }
 
@@ -24,7 +26,7 @@ type Phase = 'ready' | 'playing' | 'transition' | 'over' | 'won';
 const MAX_QUESTIONS = 20;
 const START_LIVES = 3;
 
-export default function BlastView({ set, onExit }: BlastViewProps) {
+export default function BlastView({ set, sound, onExit }: BlastViewProps) {
   const [phase, setPhase] = useState<Phase>('ready');
   const [rock, setRock] = useState<Rock | null>(null);
   const [fall, setFall] = useState(0);
@@ -113,6 +115,7 @@ export default function BlastView({ set, onExit }: BlastViewProps) {
     if (phase !== 'playing' || !rock || flash) return;
     const correct = index === rock.answer;
     setFlash({ index, correct });
+    playFeedback(correct, sound);
 
     if (correct) {
       setScore((value) => value + Math.round(110 + (1 - fall) * 90));
@@ -166,17 +169,21 @@ export default function BlastView({ set, onExit }: BlastViewProps) {
             </div>
           </div>
 
-          <div className="planet" aria-hidden="true" />
+          <div className="blast-sky">
+            <div className="planet" aria-hidden="true" />
 
-          {rock ? (
-            <div
-              className={`asteroid${inDanger ? ' danger' : ''}`}
-              style={{ top: `${5 + fall * 50}%` }}
-              key={rock.id}
-            >
-              {rock.term.term}
-            </div>
-          ) : null}
+            {rock ? (
+              <div
+                className={`asteroid${inDanger ? ' danger' : ''}`}
+                style={{ top: `${4 + fall * 68}%` }}
+                key={rock.id}
+              >
+                <span className="asteroid-text" title={rock.term.term}>
+                  {rock.term.term}
+                </span>
+              </div>
+            ) : null}
+          </div>
 
           {rock && phase !== 'ready' ? (
             <div className="blast-answer" role="group" aria-label="Choose the matching definition">
@@ -194,7 +201,9 @@ export default function BlastView({ set, onExit }: BlastViewProps) {
                     disabled={Boolean(flash) || phase !== 'playing'}
                     onClick={() => choose(index)}
                   >
-                    {option}
+                    <span className="blast-option-text" title={option}>
+                      {option}
+                    </span>
                   </button>
                 );
               })}

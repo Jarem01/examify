@@ -4,11 +4,13 @@ import { useCallback, useMemo, useState } from 'react';
 import { buildTest } from '@/lib/questions';
 import type { MatchingQuestion, Question, StudySet } from '@/lib/types';
 import { shuffle, speak } from '@/lib/utils';
+import { playFeedback } from '@/lib/sfx';
 import ModeHeader from './ModeHeader';
 import { TestIcon, VolumeIcon } from './icons';
 
 interface TestViewProps {
   set: StudySet;
+  sound: boolean;
   onExit: () => void;
 }
 
@@ -42,7 +44,7 @@ function answerSummary(question: Question, answer: Answer): string {
   return 'No answer';
 }
 
-export default function TestView({ set, onExit }: TestViewProps) {
+export default function TestView({ set, sound, onExit }: TestViewProps) {
   const [phase, setPhase] = useState<'setup' | 'taking' | 'report'>('setup');
   const [count, setCount] = useState<number>(20);
   const [formats, setFormats] = useState({ mcq: true, tf: true, matching: true });
@@ -288,7 +290,10 @@ export default function TestView({ set, onExit }: TestViewProps) {
                       type="button"
                       className={`option${answers[question.id] === optionIndex ? ' selected' : ''}`}
                       aria-pressed={answers[question.id] === optionIndex}
-                      onClick={() => setAnswers((previous) => ({ ...previous, [question.id]: optionIndex }))}
+                      onClick={() => {
+                        setAnswers((previous) => ({ ...previous, [question.id]: optionIndex }));
+                        playFeedback(optionIndex === question.answerIndex, sound);
+                      }}
                     >
                       <span className="option-key">{optionIndex + 1}</span>
                       <span>{option}</span>
@@ -308,7 +313,10 @@ export default function TestView({ set, onExit }: TestViewProps) {
                       type="button"
                       className={`option${answers[question.id] === value ? ' selected' : ''}`}
                       aria-pressed={answers[question.id] === value}
-                      onClick={() => setAnswers((previous) => ({ ...previous, [question.id]: value }))}
+                      onClick={() => {
+                        setAnswers((previous) => ({ ...previous, [question.id]: value }));
+                        playFeedback(value === question.answer, sound);
+                      }}
                     >
                       <span className="option-key">{value ? 'T' : 'F'}</span>
                       <span>{value ? 'True' : 'False'}</span>
@@ -321,6 +329,7 @@ export default function TestView({ set, onExit }: TestViewProps) {
             {question.type === 'matching' ? (
               <MatchingInput
                 question={question}
+                sound={sound}
                 value={(answers[question.id] as Record<string, string>) ?? {}}
                 onChange={(next) => setAnswers((previous) => ({ ...previous, [question.id]: next }))}
               />
@@ -341,10 +350,12 @@ export default function TestView({ set, onExit }: TestViewProps) {
 function MatchingInput({
   question,
   value,
+  sound,
   onChange,
 }: {
   question: MatchingQuestion;
   value: Record<string, string>;
+  sound: boolean;
   onChange: (next: Record<string, string>) => void;
 }) {
   const terms = useMemo(() => shuffle(question.pairs.map((pair) => ({ id: pair.termId, text: pair.term }))), [question.id]);
@@ -384,6 +395,7 @@ function MatchingInput({
                 onClick={() => {
                   if (!activeTerm) return;
                   onChange({ ...value, [activeTerm]: definition.id });
+                  playFeedback(definition.id === activeTerm, sound);
                   setActiveTerm(null);
                 }}
               >

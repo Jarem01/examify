@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { StudySet, Term } from '@/lib/types';
 import { formatTime, sample, shuffle } from '@/lib/utils';
+import { playFeedback } from '@/lib/sfx';
 import ModeHeader from './ModeHeader';
 import { MatchIcon, TimerIcon } from './icons';
 
 interface MatchViewProps {
   set: StudySet;
+  sound: boolean;
   onExit: () => void;
 }
 
@@ -31,7 +33,7 @@ function buildBoard(pairs: Term[]): Tile[] {
   );
 }
 
-export default function MatchView({ set, onExit }: MatchViewProps) {
+export default function MatchView({ set, sound, onExit }: MatchViewProps) {
   const [phase, setPhase] = useState<Phase>('ready');
   const [tiles, setTiles] = useState<Tile[]>(() =>
     buildBoard(sample(set.terms, Math.min(PAIRS, set.terms.length))),
@@ -99,6 +101,7 @@ export default function MatchView({ set, onExit }: MatchViewProps) {
     }
 
     setMoves((value) => value + 1);
+    playFeedback(first.termId === tile.termId, sound);
     if (first.termId === tile.termId) {
       const nextMatched = [...matched, first.key, tile.key];
       setMatched(nextMatched);
@@ -155,7 +158,9 @@ export default function MatchView({ set, onExit }: MatchViewProps) {
                 aria-label={`${tile.kind === 'term' ? 'Term' : 'Definition'}: ${tile.text}`}
               >
                 <span className="tile-kind">{tile.kind === 'term' ? 'Term' : 'Definition'}</span>
-                {tile.text}
+                <span className="tile-text" title={tile.text}>
+                  {tile.text}
+                </span>
               </button>
             );
           })}

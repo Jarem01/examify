@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { SetProgress, StudyMode, StudySet } from '@/lib/types';
 import { pluralize } from '@/lib/utils';
-import { copyText, downloadSet, embedSnippet, printSet } from '@/lib/setIO';
+import { downloadSet, printSet } from '@/lib/setIO';
 import SetMenu from './SetMenu';
 import {
   ArrowLeftIcon,
@@ -115,10 +115,6 @@ export default function SetView({
             onExport={() => {
               downloadSet(set);
               onNotify(`Exported ${set.terms.length} cards as a .txt file.`);
-            }}
-            onEmbed={async () => {
-              const copied = await copyText(embedSnippet(set));
-              onNotify(copied ? 'Embed code copied to the clipboard.' : 'Could not copy the embed code.');
             }}
           />
         </div>
