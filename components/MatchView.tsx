@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudySet, Term } from '@/lib/types';
 import { formatTime, sample, shuffle } from '@/lib/utils';
 import { playFeedback } from '@/lib/sfx';
-import { readSession, writeSession } from '@/lib/session';
+import { clearSession, readSession, writeSession } from '@/lib/session';
 import ModeHeader from './ModeHeader';
+import ResumeBanner from './ResumeBanner';
 import { MatchIcon, TimerIcon } from './icons';
 
 interface MatchViewProps {
@@ -64,6 +65,7 @@ export default function MatchView({ set, sound, sessionKey, onExit }: MatchViewP
     return { ...saved, tiles };
   }, [sessionKey, set.terms]);
   const resumable = restored?.phase === 'playing';
+  const [resumed, setResumed] = useState(Boolean(resumable));
 
   const [phase, setPhase] = useState<Phase>(resumable ? 'playing' : 'ready');
   const [tiles, setTiles] = useState<Tile[]>(() =>
@@ -113,6 +115,12 @@ export default function MatchView({ set, sound, sessionKey, onExit }: MatchViewP
     startedAt.current = Date.now();
     setPhase('playing');
   }, [set.terms]);
+
+  const startOver = useCallback(() => {
+    clearSession(sessionKey);
+    setResumed(false);
+    startGame();
+  }, [sessionKey, startGame]);
 
   useEffect(() => {
     if (phase !== 'playing') return;
@@ -183,6 +191,8 @@ export default function MatchView({ set, sound, sessionKey, onExit }: MatchViewP
           </span>
         }
       />
+
+      {resumed ? <ResumeBanner onStartOver={startOver} /> : null}
 
       <div className="game-stage">
         <div className="game-hud">

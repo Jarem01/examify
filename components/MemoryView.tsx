@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudySet, Term } from '@/lib/types';
 import { formatTime, sample, shuffle } from '@/lib/utils';
-import { readSession, writeSession } from '@/lib/session';
+import { clearSession, readSession, writeSession } from '@/lib/session';
 import ModeHeader from './ModeHeader';
+import ResumeBanner from './ResumeBanner';
 import { BlocksIcon, CharmsIcon, TimerIcon } from './icons';
 
 interface MemoryViewProps {
@@ -65,6 +66,7 @@ export default function MemoryView({ set, variant, sessionKey, onExit }: MemoryV
     return { ...saved, cards };
   }, [sessionKey, set.terms]);
   const resumable = restored?.phase === 'playing';
+  const [resumed, setResumed] = useState(Boolean(resumable));
 
   const [phase, setPhase] = useState<Phase>(resumable ? 'playing' : 'ready');
   const [cards, setCards] = useState<MemoryCard[]>(() =>
@@ -107,6 +109,12 @@ export default function MemoryView({ set, variant, sessionKey, onExit }: MemoryV
     startedAt.current = Date.now();
     setPhase('playing');
   }, [pairCount, set.terms]);
+
+  const startOver = useCallback(() => {
+    clearSession(sessionKey);
+    setResumed(false);
+    startGame();
+  }, [sessionKey, startGame]);
 
   useEffect(() => {
     if (phase !== 'playing') return;
@@ -166,6 +174,8 @@ export default function MemoryView({ set, variant, sessionKey, onExit }: MemoryV
           </span>
         }
       />
+
+      {resumed ? <ResumeBanner onStartOver={startOver} /> : null}
 
       <div className="game-stage">
         <div className="game-hud">

@@ -5,8 +5,9 @@ import { pickDistractors } from '@/lib/questions';
 import type { StudySet, Term } from '@/lib/types';
 import { shuffle } from '@/lib/utils';
 import { playFeedback } from '@/lib/sfx';
-import { readSession, writeSession } from '@/lib/session';
+import { clearSession, readSession, writeSession } from '@/lib/session';
 import ModeHeader from './ModeHeader';
+import ResumeBanner from './ResumeBanner';
 import { BlastIcon } from './icons';
 
 interface BlastViewProps {
@@ -68,6 +69,7 @@ export default function BlastView({ set, sound, sessionKey, onExit }: BlastViewP
   const [rock, setRock] = useState<Rock | null>(restored?.rock ?? null);
   const [fall, setFall] = useState(0);
   const [duration, setDuration] = useState(8500);
+  const [resumed, setResumed] = useState(Boolean(restored));
   const [lives, setLives] = useState(restored?.lives ?? START_LIVES);
   const [score, setScore] = useState(restored?.score ?? 0);
   const [streak, setStreak] = useState(restored?.streak ?? 0);
@@ -158,6 +160,12 @@ export default function BlastView({ set, sound, sessionKey, onExit }: BlastViewP
     setPhase('playing');
   }, [spawn]);
 
+  const startOver = useCallback(() => {
+    clearSession(sessionKey);
+    setResumed(false);
+    startGame();
+  }, [sessionKey, startGame]);
+
   const choose = (index: number) => {
     if (phase !== 'playing' || !rock || flash) return;
     const correct = index === rock.answer;
@@ -200,6 +208,8 @@ export default function BlastView({ set, sound, sessionKey, onExit }: BlastViewP
         onClose={onExit}
         right={<span className="chip">{score} pts</span>}
       />
+
+      {resumed ? <ResumeBanner onStartOver={startOver} /> : null}
 
       <div className="game-stage">
         <div className="blast-stage">

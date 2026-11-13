@@ -5,8 +5,9 @@ import { buildTest } from '@/lib/questions';
 import type { MatchingQuestion, Question, QuestionDirection, StudySet } from '@/lib/types';
 import { shuffle, speak } from '@/lib/utils';
 import { playFeedback } from '@/lib/sfx';
-import { readSession, writeSession } from '@/lib/session';
+import { clearSession, readSession, writeSession } from '@/lib/session';
 import ModeHeader from './ModeHeader';
+import ResumeBanner from './ResumeBanner';
 import { TestIcon, VolumeIcon } from './icons';
 
 interface TestViewProps {
@@ -71,6 +72,7 @@ export default function TestView({ set, sound, direction, sessionKey, onExit }: 
   );
   const [questions, setQuestions] = useState<Question[]>(restored?.questions ?? []);
   const [answers, setAnswers] = useState<Record<string, Answer>>(restored?.answers ?? {});
+  const [resumed, setResumed] = useState(() => Boolean(restored));
 
   useEffect(() => {
     writeSession(sessionKey, { phase, count, formats, questions, answers });
@@ -83,6 +85,12 @@ export default function TestView({ set, sound, direction, sessionKey, onExit }: 
     setPhase('taking');
     window.scrollTo({ top: 0 });
   }, [count, formats, set.terms, direction]);
+
+  const startOver = useCallback(() => {
+    clearSession(sessionKey);
+    setResumed(false);
+    start();
+  }, [sessionKey, start]);
 
   const submit = useCallback(() => {
     setPhase('report');
@@ -275,6 +283,8 @@ export default function TestView({ set, sound, direction, sessionKey, onExit }: 
         }
       />
       <div className="test-shell">
+        {resumed ? <ResumeBanner label="test" onStartOver={startOver} /> : null}
+
         <div className="test-scorebar">
           <span className="count">
             {answeredCount} / {questions.length}

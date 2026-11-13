@@ -16,6 +16,7 @@ import { speak } from '@/lib/utils';
 import { playFeedback } from '@/lib/sfx';
 import { clearSession, readSession, writeSession } from '@/lib/session';
 import ModeHeader from './ModeHeader';
+import ResumeBanner from './ResumeBanner';
 import { CheckIcon, FlameIcon, LearnIcon, TrophyIcon, VolumeIcon } from './icons';
 
 interface LearnViewProps {
@@ -67,6 +68,8 @@ export default function LearnView({
   const [state, setState] = useState<LearnState>(
     () => restoredState ?? createLearnState(sessionTerms, settings.sectionSize),
   );
+
+  const [resumed, setResumed] = useState(() => Boolean(restoredState));
 
   useEffect(() => {
     if (state.complete) clearSession(sessionKey);
@@ -166,6 +169,12 @@ export default function LearnView({
     setNonce((value) => value + 1);
   }, [sessionTerms, settings.sectionSize]);
 
+  const startOver = useCallback(() => {
+    clearSession(sessionKey);
+    setResumed(false);
+    restart();
+  }, [restart, sessionKey]);
+
   const continueRound = useCallback(() => {
     answeredRef.current = false;
     questionRef.current = null;
@@ -204,6 +213,8 @@ export default function LearnView({
         onClose={onExit}
         onSettings={onSettings}
       />
+
+      {resumed && !state.complete ? <ResumeBanner onStartOver={startOver} /> : null}
 
       <div className="learn-top">
         <div
