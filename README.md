@@ -1,26 +1,42 @@
 # Examify
 
-A Quizlet-style study platform for the "Exam 11/5–11/13" set (210 terms), with five study modes, a graded practice test, and a PDF/prose importer.
+A Quizlet-style study platform for the "Exam 11/5–11/13" set (210 terms), with seven study modes, a graded practice test, and a PDF/prose importer.
 
-## Quick start
+**Live app: <https://jarem01.github.io/examify/>** — no install, works on a phone or laptop. Everything runs in the browser and your progress is saved on that device.
+
+## Run it locally
 
 Requires **Node.js 20 or newer**.
 
 ```bash
 npm ci        # install exact dependency versions from package-lock.json
-npm run dev   # start the dev server
+npm run dev   # http://localhost:3000
 ```
 
-Then open <http://localhost:3000>.
-
-To run the production build instead:
+Production build:
 
 ```bash
-npm run build
-npm start     # serves the build on http://localhost:3000
+npm run build   # writes a static site to out/
+npm start       # or serve out/ with any static file server
 ```
 
-Port 3000 is the default. To use another port: `npm run dev -- -p 4000`.
+## How hosting works
+
+The app is a Next.js static export (`output: 'export'`) — there is no server, no database and no API. `npm run build` emits plain HTML/CSS/JS into `out/`, which is what makes it runnable from GitHub Pages.
+
+`.github/workflows/pages.yml` builds and publishes `out/` on every push to `main`. The build sets `NEXT_PUBLIC_BASE_PATH=/examify` so asset paths resolve under `https://<user>.github.io/examify/`; locally the variable is unset and the app serves from the root.
+
+Because the site is served from a subpath on Pages, a project page must keep that base path — if you fork this to a differently named repo, change `/examify` in the workflow.
+
+## Where your data lives
+
+Sets and progress are stored in your browser's **localStorage** under `examify.db.v1`. On first visit the store is seeded from `lib/seed-data.ts`, so the 210-term set is always there to start from.
+
+Consequences worth knowing:
+
+- Progress is **per browser and per device** — it does not sync, and a different browser starts fresh.
+- Clearing site data resets your progress (back to the seed set).
+- Imported sets stay in that browser; export anything you want to keep by re-importing the source text or PDF.
 
 ## Study modes
 
@@ -41,25 +57,16 @@ Every answer is **selection-only** — no typing required. Settings let you pick
 The importer (`Import` in the sidebar) accepts:
 
 - **Delimiter-separated text** — term/definition split by tab, comma, semicolon or a custom character; cards split by new line or semicolon. A live preview shows the parsed count as you type.
-- **PDF upload** — text is extracted on the server with `unpdf`, then parsed automatically.
+- **PDF upload** — text is extracted **in the browser** with `unpdf` and its bundled PDF.js build, then parsed automatically. First extraction takes a few seconds while PDF.js loads.
 - **Prose Q&A dumps** — Quizlet/Word exports where each question is followed by its answer are auto-detected when delimiter parsing yields fewer than two cards. The parser strips Quizlet headers, `N / 10` footers and URLs, repairs hyphenated line breaks, respects quotes and abbreviations, and handles essay markers such as `— Point 3` and `(Point 3)`.
-
-## Data
-
-Sets and progress live in `data/db.json`, a plain JSON file written by the API routes in `app/api/`. It is **not committed** — on first run it is regenerated from `lib/seed-data.ts`, so a fresh clone starts with the full 210-term set and zero progress.
-
-Because state is a local file, the app expects a normal Node server with a writable disk (local, or a container/VM with a persistent volume).
 
 ## Project layout
 
 ```
-app/            routes, layout, global CSS, API handlers
-  api/extract   PDF → text (server-side unpdf)
-  api/parse     text → cards (delimiter + prose parsers)
-  api/sets      set CRUD
-  api/progress  per-term progress
-components/     sidebar, set view, and one view per study mode
-lib/            seed data, store, question builders, learn engine, parsers
+app/            the single page, layout and global CSS
+components/     sidebar, set view, one view per study mode, import and settings modals
+lib/            seed data, browser store, question builders, learn engine, parsers
+.github/        Pages build-and-deploy workflow
 ```
 
 ## Scripts
@@ -67,5 +74,5 @@ lib/            seed data, store, question builders, learn engine, parsers
 | Script | Purpose |
 | --- | --- |
 | `npm run dev` | Development server with hot reload |
-| `npm run build` | Production build |
-| `npm start` | Serve the production build |
+| `npm run build` | Static export into `out/` |
+| `npm start` | Serve the production output |

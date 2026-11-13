@@ -12,6 +12,7 @@ import type {
   View,
 } from '@/lib/types';
 import { DEFAULT_SETTINGS, loadSettings, resolveAccent, saveSettings } from '@/lib/settings';
+import { createSet, ensureSeed, getProgress, getSet, listSets, recordProgress } from '@/lib/store';
 import Sidebar from './Sidebar';
 import HomeView from './HomeView';
 import SearchView from './SearchView';
@@ -26,11 +27,6 @@ import ImportModal, { type ImportPayload } from './ImportModal';
 import SettingsModal from './SettingsModal';
 import { SearchIcon, SettingsIcon, PlusIcon, SparkIcon } from './icons';
 
-interface AppShellProps {
-  initialSets: SetSummary[];
-  initialProgress: ProgressState;
-}
-
 interface PendingPatch {
   terms: Record<string, TermProgress>;
   answered: number;
@@ -38,10 +34,15 @@ interface PendingPatch {
   missed: number;
 }
 
-export default function AppShell({ initialSets, initialProgress }: AppShellProps) {
-  const [sets, setSets] = useState<SetSummary[]>(initialSets);
-  const [progress, setProgress] = useState<ProgressState>(initialProgress);
-  const progressRef = useRef<ProgressState>(initialProgress);
+export default function AppShell() {
+  const [sets, setSets] = useState<SetSummary[]>([]);
+  const [progress, setProgress] = useState<ProgressState>({
+    sets: {},
+    totalAnswered: 0,
+    totalCorrect: 0,
+  });
+  const progressRef = useRef<ProgressState>(progress);
+  const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>({ kind: 'home' });
   const [activeSet, setActiveSet] = useState<StudySet | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -54,6 +55,23 @@ export default function AppShell({ initialSets, initialProgress }: AppShellProps
 
   useEffect(() => {
     setSettings(loadSettings());
+  }, []);
+
+  /* Sets and progress live in browser storage, so load them after mount. */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await ensureSeed();
+      const [nextSets, nextProgress] = await Promise.all([listSets(), getProgress()]);
+      if (cancelled) return;
+      setSets(nextSets);
+      setProgress(nextProgress);
+      progressRef.current = nextProgress;
+      setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -87,10 +105,8 @@ export default function AppShell({ initialSets, initialProgress }: AppShellProps
     let cancelled = false;
     (async () => {
       try {
-        const response = await fetch(`/api/sets/${id}`);
-        if (!response.ok) return;
-        const data = (await response.json()) as { set?: StudySet };
-        if (!cancelled && data.set) setActiveSet(data.set);
+        const set = await getSet(id);
+        if (!cancelled && set) setActiveSet(set);
       } catch {
         if (!cancelled) setToast('Could not load that study set.');
       }
@@ -105,16 +121,12 @@ export default function AppShell({ initialSets, initialProgress }: AppShellProps
     pending.current = {};
     await Promise.all(
       Object.entries(batch).map(([setId, patch]) =>
-        fetch('/api/progress', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            setId,
-            terms: patch.terms,
-            answeredDelta: patch.answered,
-            correctDelta: patch.correct,
-            missedDelta: patch.missed,
-          }),
+        recordProgress({
+          setId,
+          terms: patch.terms,
+          answeredDelta: patch.answered,
+          correctDelta: patch.correct,
+          missedDelta: patch.missed,
         }).catch(() => undefined),
       ),
     );
@@ -190,31 +202,26 @@ export default function AppShell({ initialSets, initialProgress }: AppShellProps
   const handleCreate = useCallback(
     async (payload: ImportPayload) => {
       try {
-        const response = await fetch('/api/sets', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const data = (await response.json()) as { set?: StudySet; error?: string };
-        if (!response.ok || !data.set) {
-          setToast(data.error ?? 'Could not create that set.');
+        const created = await createSet(payload);
+        if (!created || created.terms.length === 0) {
+          setToast('Could not create that set.');
           return;
         }
         const summary: SetSummary = {
-          id: data.set.id,
-          title: data.set.title,
-          description: data.set.description,
-          subject: data.set.subject,
-          termCount: data.set.terms.length,
+          id: created.id,
+          title: created.title,
+          description: created.description,
+          subject: created.subject,
+          termCount: created.terms.length,
           masteredCount: 0,
-          createdAt: data.set.createdAt,
-          updatedAt: data.set.updatedAt,
+          createdAt: created.createdAt,
+          updatedAt: created.updatedAt,
         };
         setSets((prev) => [summary, ...prev]);
-        setActiveSet(data.set);
+        setActiveSet(created);
         setImportOpen(false);
-        setView({ kind: 'mode', setId: data.set.id, mode: 'flashcards' });
-        setToast(`Imported ${data.set.terms.length} cards into “${data.set.title}”.`);
+        setView({ kind: 'mode', setId: created.id, mode: 'flashcards' });
+        setToast(`Imported ${created.terms.length} cards into “${created.title}”.`);
       } catch {
         setToast('Something went wrong while saving that set.');
       }
@@ -274,6 +281,18 @@ export default function AppShell({ initialSets, initialProgress }: AppShellProps
         return null;
     }
   }, [view, activeSet, settings, activeProgress, recordAnswer]);
+
+  if (!ready) {
+    return (
+      <div className="app" style={{ ['--accent' as string]: accent }}>
+        <div className="main-col">
+          <main className="content">
+            <LoadingPanel label="Loading your sets…" />
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app" style={{ ['--accent' as string]: accent }}>

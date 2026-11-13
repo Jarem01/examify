@@ -11,6 +11,23 @@ import {
 } from '@/lib/parse';
 import { CloseIcon, UploadIcon } from './icons';
 
+/**
+ * Read a PDF or plain-text file entirely in the browser. The app ships as
+ * static files, so there is no server route to extract text.
+ */
+async function readFile(file: File): Promise<string> {
+  if (file.size > 12 * 1024 * 1024) throw new Error('Please upload a file under 12 MB.');
+  const buffer = new Uint8Array(await file.arrayBuffer());
+  if (!file.name.toLowerCase().endsWith('.pdf')) return new TextDecoder('utf-8').decode(buffer);
+
+  const { configureUnPDF, extractText, getDocumentProxy } = await import('unpdf');
+  // Browser builds have to supply the bundled serverless PDF.js build.
+  await configureUnPDF({ pdfjs: () => import('unpdf/pdfjs') });
+  const pdf = await getDocumentProxy(buffer);
+  const { text } = await extractText(pdf, { mergePages: true });
+  return Array.isArray(text) ? text.join('\n') : text;
+}
+
 export interface ImportPayload {
   title: string;
   description: string;
@@ -56,22 +73,15 @@ export default function ImportModal({ onClose, onCreate, defaultTitle }: ImportM
     setReading(true);
     setError(null);
     try {
-      const form = new FormData();
-      form.append('file', file);
-      const response = await fetch('/api/extract', { method: 'POST', body: form });
-      const data = (await response.json()) as { text?: string; error?: string };
-      if (!response.ok || typeof data.text !== 'string') {
-        setError(data.error ?? 'Could not read that file.');
-        return;
-      }
-      setText(data.text);
-      const guess = detectDelimiters(data.text);
+      const extracted = await readFile(file);
+      setText(extracted);
+      const guess = detectDelimiters(extracted);
       if (guess.termDelimiter) setTermDelimiter(guess.termDelimiter);
       if (guess.cardDelimiter) setCardDelimiter(guess.cardDelimiter);
       if (guess.customTermDelimiter) setCustomTerm(guess.customTermDelimiter);
-      if (data.text.trim().length === 0) setError('That file had no readable text.');
-    } catch {
-      setError('Could not upload that file.');
+      if (extracted.trim().length === 0) setError('That file had no readable text.');
+    } catch (error) {
+      setError((error as Error).message || 'Could not read that file.');
     } finally {
       setReading(false);
     }

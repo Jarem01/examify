@@ -1,5 +1,3 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { SEED_CARDS, SEED_DESCRIPTION, SEED_TITLE } from './seed-data';
 import type {
   ProgressState,
@@ -16,8 +14,12 @@ interface Database {
   progress: ProgressState;
 }
 
-const DB_DIR = path.join(process.cwd(), 'data');
-const DB_FILE = path.join(DB_DIR, 'db.json');
+/**
+ * The app is exported as static files, so there is no server to hold state.
+ * Everything lives in the browser's localStorage; a fresh browser falls back
+ * to the seed set built from `lib/seed-data.ts`.
+ */
+const STORAGE_KEY = 'examify.db.v1';
 
 export const SEED_SET_ID = 'exam-11-5-11-13';
 
@@ -43,37 +45,39 @@ function buildSeedDatabase(): Database {
 }
 
 let cache: Database | null = null;
-let chain: Promise<unknown> = Promise.resolve();
 
-/** Serialize read-modify-write cycles so concurrent requests cannot clobber data. */
-function serialize<T>(task: () => Promise<T>): Promise<T> {
-  const next = chain.then(task, task);
-  chain = next.then(
-    () => undefined,
-    () => undefined,
-  );
-  return next;
+function hasStorage(): boolean {
+  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 }
 
-async function persist(db: Database): Promise<void> {
-  await fs.mkdir(DB_DIR, { recursive: true });
-  const tmp = `${DB_FILE}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(db, null, 2), 'utf8');
-  await fs.rename(tmp, DB_FILE);
-}
-
-async function load(): Promise<Database> {
-  if (cache) return cache;
+function persist(db: Database): void {
+  if (!hasStorage()) return;
   try {
-    const raw = await fs.readFile(DB_FILE, 'utf8');
-    const parsed = JSON.parse(raw) as Database;
-    if (!parsed || !Array.isArray(parsed.sets) || !parsed.progress) throw new Error('malformed database');
-    cache = parsed;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
   } catch {
-    const seeded = buildSeedDatabase();
-    cache = seeded;
-    await persist(seeded).catch(() => undefined);
+    // Storage disabled or full — keep working in memory for this session.
   }
+}
+
+function load(): Database {
+  if (cache) return cache;
+  if (hasStorage()) {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Database;
+        if (parsed && Array.isArray(parsed.sets) && parsed.progress) {
+          cache = parsed;
+          return cache;
+        }
+      }
+    } catch {
+      // Malformed or unreadable — fall through and reseed.
+    }
+  }
+  const seeded = buildSeedDatabase();
+  cache = seeded;
+  persist(seeded);
   return cache;
 }
 
@@ -100,14 +104,14 @@ function toSummary(set: StudySet, progress: SetProgress | undefined): SetSummary
 }
 
 export async function listSets(): Promise<SetSummary[]> {
-  const db = await load();
+  const db = load();
   return [...db.sets]
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
     .map((set) => toSummary(set, db.progress.sets[set.id]));
 }
 
 export async function getSet(id: string): Promise<StudySet | null> {
-  const db = await load();
+  const db = load();
   return db.sets.find((set) => set.id === id) ?? null;
 }
 
@@ -119,31 +123,29 @@ export interface CreateSetInput {
 }
 
 export async function createSet(input: CreateSetInput): Promise<StudySet> {
-  return serialize(async () => {
-    const db = await load();
-    const now = new Date().toISOString();
-    const terms: Term[] = input.terms
-      .filter((item) => item.term.trim() && item.definition.trim())
-      .map((item) => ({
-        id: uid('t'),
-        term: item.term.trim(),
-        definition: item.definition.trim(),
-        termImage: item.termImage ?? null,
-        defImage: item.defImage ?? null,
-      }));
-    const set: StudySet = {
-      id: uid('set'),
-      title: input.title.trim() || 'Untitled study set',
-      description: input.description?.trim() ?? '',
-      subject: input.subject?.trim() ?? '',
-      createdAt: now,
-      updatedAt: now,
-      terms,
-    };
-    db.sets.unshift(set);
-    await persist(db);
-    return set;
-  });
+  const db = load();
+  const now = new Date().toISOString();
+  const terms: Term[] = input.terms
+    .filter((item) => item.term.trim() && item.definition.trim())
+    .map((item) => ({
+      id: uid('t'),
+      term: item.term.trim(),
+      definition: item.definition.trim(),
+      termImage: item.termImage ?? null,
+      defImage: item.defImage ?? null,
+    }));
+  const set: StudySet = {
+    id: uid('set'),
+    title: input.title.trim() || 'Untitled study set',
+    description: input.description?.trim() ?? '',
+    subject: input.subject?.trim() ?? '',
+    createdAt: now,
+    updatedAt: now,
+    terms,
+  };
+  db.sets.unshift(set);
+  persist(db);
+  return set;
 }
 
 export async function updateSet(
@@ -155,44 +157,40 @@ export async function updateSet(
     terms?: { id?: string; term: string; definition: string }[];
   },
 ): Promise<StudySet | null> {
-  return serialize(async () => {
-    const db = await load();
-    const set = db.sets.find((item) => item.id === id);
-    if (!set) return null;
-    if (typeof patch.title === 'string') set.title = patch.title.trim() || set.title;
-    if (typeof patch.description === 'string') set.description = patch.description.trim();
-    if (typeof patch.subject === 'string') set.subject = patch.subject.trim();
-    if (Array.isArray(patch.terms)) {
-      set.terms = patch.terms
-        .filter((item) => item.term.trim() && item.definition.trim())
-        .map((item) => ({
-          id: item.id ?? uid('t'),
-          term: item.term.trim(),
-          definition: item.definition.trim(),
-          termImage: null,
-          defImage: null,
-        }));
-    }
-    set.updatedAt = new Date().toISOString();
-    await persist(db);
-    return set;
-  });
+  const db = load();
+  const set = db.sets.find((item) => item.id === id);
+  if (!set) return null;
+  if (typeof patch.title === 'string') set.title = patch.title.trim() || set.title;
+  if (typeof patch.description === 'string') set.description = patch.description.trim();
+  if (typeof patch.subject === 'string') set.subject = patch.subject.trim();
+  if (Array.isArray(patch.terms)) {
+    set.terms = patch.terms
+      .filter((item) => item.term.trim() && item.definition.trim())
+      .map((item) => ({
+        id: item.id ?? uid('t'),
+        term: item.term.trim(),
+        definition: item.definition.trim(),
+        termImage: null,
+        defImage: null,
+      }));
+  }
+  set.updatedAt = new Date().toISOString();
+  persist(db);
+  return set;
 }
 
 export async function deleteSet(id: string): Promise<boolean> {
-  return serialize(async () => {
-    const db = await load();
-    const before = db.sets.length;
-    db.sets = db.sets.filter((set) => set.id !== id);
-    delete db.progress.sets[id];
-    if (db.sets.length === before) return false;
-    await persist(db);
-    return true;
-  });
+  const db = load();
+  const before = db.sets.length;
+  db.sets = db.sets.filter((set) => set.id !== id);
+  delete db.progress.sets[id];
+  if (db.sets.length === before) return false;
+  persist(db);
+  return true;
 }
 
 export async function getProgress(): Promise<ProgressState> {
-  const db = await load();
+  const db = load();
   return { ...db.progress, sets: { ...db.progress.sets } };
 }
 
@@ -205,31 +203,29 @@ export interface ProgressPatch {
 }
 
 export async function recordProgress(patch: ProgressPatch): Promise<ProgressState> {
-  return serialize(async () => {
-    const db = await load();
-    if (!db.progress.sets[patch.setId]) db.progress.sets[patch.setId] = emptySetProgress();
-    const target = db.progress.sets[patch.setId];
+  const db = load();
+  if (!db.progress.sets[patch.setId]) db.progress.sets[patch.setId] = emptySetProgress();
+  const target = db.progress.sets[patch.setId];
 
-    if (patch.terms) {
-      target.terms = { ...target.terms, ...patch.terms };
-    }
-    const answered = Math.max(0, patch.answeredDelta ?? 0);
-    const correct = Math.max(0, patch.correctDelta ?? 0);
-    const missed = Math.max(0, patch.missedDelta ?? 0);
+  if (patch.terms) {
+    target.terms = { ...target.terms, ...patch.terms };
+  }
+  const answered = Math.max(0, patch.answeredDelta ?? 0);
+  const correct = Math.max(0, patch.correctDelta ?? 0);
+  const missed = Math.max(0, patch.missedDelta ?? 0);
 
-    target.totalAnswered += answered;
-    target.totalCorrect += correct;
-    target.totalMissed += missed;
-    target.lastStudied = new Date().toISOString();
-    db.progress.totalAnswered += answered;
-    db.progress.totalCorrect += correct;
+  target.totalAnswered += answered;
+  target.totalCorrect += correct;
+  target.totalMissed += missed;
+  target.lastStudied = new Date().toISOString();
+  db.progress.totalAnswered += answered;
+  db.progress.totalCorrect += correct;
 
-    await persist(db);
-    return { ...db.progress, sets: { ...db.progress.sets } };
-  });
+  persist(db);
+  return { ...db.progress, sets: { ...db.progress.sets } };
 }
 
-/** Create the set on demand (e.g. after the database file was removed). */
+/** Create the seed set on demand (e.g. after browser storage was cleared). */
 export async function ensureSeed(): Promise<void> {
-  await load();
+  load();
 }
