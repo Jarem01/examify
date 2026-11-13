@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import type { ProgressState, SetSummary, StudyMode } from '@/lib/types';
 import { pluralize } from '@/lib/utils';
 import { CardsIcon, LearnIcon, PlusIcon, SparkIcon } from './icons';
+import { LogoMark } from './Logo';
 
 interface HomeViewProps {
   sets: SetSummary[];
@@ -34,7 +35,11 @@ export default function HomeView({ sets, progress, onOpenSet, onMode, onImport }
   return (
     <div>
       <section className="hero" aria-labelledby="hero-title">
-        <span className="eyebrow">Your study dashboard</span>
+        <LogoMark size={320} className="hero-watermark" decorative />
+        <span className="eyebrow hero-eyebrow">
+          <LogoMark size={18} decorative />
+          Your study dashboard
+        </span>
         <h1 id="hero-title" style={{ marginTop: 10 }}>
           Master every term,
           <br />

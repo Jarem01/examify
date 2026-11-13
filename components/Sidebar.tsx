@@ -1,6 +1,7 @@
 'use client';
 
 import type { StudyMode, View } from '@/lib/types';
+import { Logo } from './Logo';
 import {
   BlastIcon,
   BlocksIcon,
@@ -39,10 +40,7 @@ export default function Sidebar({ view, onNavigate, onMode, onOpenSettings, setT
     <aside className="sidebar" aria-label="Main navigation">
       <div className="sidebar-inner">
         <button className="brand" type="button" onClick={() => onNavigate({ kind: 'home' })} aria-label="Examify home">
-          <span className="brand-mark" aria-hidden="true">
-            E
-          </span>
-          <span className="brand-name">Examify</span>
+          <Logo size={36} />
         </button>
 
         <button

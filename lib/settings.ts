@@ -1,13 +1,13 @@
 import type { AccentName, Settings } from './types';
 
 export const ACCENTS: Record<AccentName, string> = {
-  indigo: '#4255ff',
+  indigo: '#2f6bff',
   green: '#23b26d',
   coral: '#ff725b',
 };
 
 export const ACCENT_LABELS: Record<AccentName, string> = {
-  indigo: 'Electric indigo',
+  indigo: 'Examify blue',
   green: 'Study green',
   coral: 'Coral',
 };
