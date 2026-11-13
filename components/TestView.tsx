@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { buildTest } from '@/lib/questions';
 import type { MatchingQuestion, Question, QuestionDirection, StudySet } from '@/lib/types';
 import { shuffle, speak } from '@/lib/utils';
 import { playFeedback } from '@/lib/sfx';
+import { readSession, writeSession } from '@/lib/session';
 import ModeHeader from './ModeHeader';
 import { TestIcon, VolumeIcon } from './icons';
 
@@ -12,7 +13,16 @@ interface TestViewProps {
   set: StudySet;
   sound: boolean;
   direction: QuestionDirection;
+  sessionKey: string;
   onExit: () => void;
+}
+
+interface SavedTest {
+  phase: 'setup' | 'taking' | 'report';
+  count: number;
+  formats: { mcq: boolean; tf: boolean; matching: boolean };
+  questions: Question[];
+  answers: Record<string, Answer>;
 }
 
 type Answer = number | boolean | Record<string, string> | null;
@@ -45,12 +55,26 @@ function answerSummary(question: Question, answer: Answer): string {
   return 'No answer';
 }
 
-export default function TestView({ set, sound, direction, onExit }: TestViewProps) {
-  const [phase, setPhase] = useState<'setup' | 'taking' | 'report'>('setup');
-  const [count, setCount] = useState<number>(20);
-  const [formats, setFormats] = useState({ mcq: true, tf: true, matching: true });
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [answers, setAnswers] = useState<Record<string, Answer>>({});
+export default function TestView({ set, sound, direction, sessionKey, onExit }: TestViewProps) {
+  const restored = useMemo(() => {
+    const saved = readSession<SavedTest>(sessionKey);
+    if (!saved || !Array.isArray(saved.questions)) return null;
+    // A finished test starts fresh next time; only an in-progress one resumes.
+    if (saved.phase === 'report') return null;
+    return saved;
+  }, [sessionKey]);
+
+  const [phase, setPhase] = useState<'setup' | 'taking' | 'report'>(restored?.phase ?? 'setup');
+  const [count, setCount] = useState<number>(restored?.count ?? 20);
+  const [formats, setFormats] = useState(
+    restored?.formats ?? { mcq: true, tf: true, matching: true },
+  );
+  const [questions, setQuestions] = useState<Question[]>(restored?.questions ?? []);
+  const [answers, setAnswers] = useState<Record<string, Answer>>(restored?.answers ?? {});
+
+  useEffect(() => {
+    writeSession(sessionKey, { phase, count, formats, questions, answers });
+  }, [phase, count, formats, questions, answers, sessionKey]);
 
   const start = useCallback(() => {
     const total = count === -1 ? set.terms.length : Math.min(count, set.terms.length);

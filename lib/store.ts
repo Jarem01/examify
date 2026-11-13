@@ -2,6 +2,7 @@ import { SEED_CARDS, SEED_DESCRIPTION, SEED_TITLE } from './seed-data';
 import type {
   ProgressState,
   SetProgress,
+  SetSection,
   SetSummary,
   StudySet,
   Term,
@@ -155,6 +156,7 @@ export async function updateSet(
     description?: string;
     subject?: string;
     terms?: { id?: string; term: string; definition: string }[];
+    sections?: SetSection[];
   },
 ): Promise<StudySet | null> {
   const db = load();
@@ -173,6 +175,22 @@ export async function updateSet(
         termImage: null,
         defImage: null,
       }));
+  }
+  if (Array.isArray(patch.sections)) {
+    const known = new Set(set.terms.map((term) => term.id));
+    set.sections = patch.sections
+      .map((section) => ({
+        id: section.id,
+        name: section.name.trim() || 'Untitled section',
+        termIds: section.termIds.filter((id) => known.has(id)),
+      }))
+      .filter((section) => section.termIds.length > 0);
+  } else if (Array.isArray(patch.terms) && set.sections) {
+    // Editing cards can remove term ids that sections point at.
+    const known = new Set(set.terms.map((term) => term.id));
+    set.sections = set.sections
+      .map((section) => ({ ...section, termIds: section.termIds.filter((id) => known.has(id)) }))
+      .filter((section) => section.termIds.length > 0);
   }
   set.updatedAt = new Date().toISOString();
   persist(db);

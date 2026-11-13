@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Settings, StudySet, Term } from '@/lib/types';
 import { speak, shuffle } from '@/lib/utils';
+import { readSession, writeSession } from '@/lib/session';
 import ModeHeader from './ModeHeader';
 import {
   CardsIcon,
@@ -17,15 +18,45 @@ import {
 interface FlashcardsViewProps {
   set: StudySet;
   settings: Settings;
+  sessionKey: string;
   onExit: () => void;
 }
 
-export default function FlashcardsView({ set, settings, onExit }: FlashcardsViewProps) {
-  const [deck, setDeck] = useState<Term[]>(() => [...set.terms]);
-  const [index, setIndex] = useState(0);
-  const [flipped, setFlipped] = useState(false);
-  const [known, setKnown] = useState<string[]>([]);
-  const [shuffled, setShuffled] = useState(false);
+interface SavedDeck {
+  deckIds: string[];
+  index: number;
+  flipped: boolean;
+  known: string[];
+  shuffled: boolean;
+}
+
+export default function FlashcardsView({ set, settings, sessionKey, onExit }: FlashcardsViewProps) {
+  const restored = useMemo(() => {
+    const saved = readSession<SavedDeck>(sessionKey);
+    if (!saved || !Array.isArray(saved.deckIds)) return null;
+    const deck = saved.deckIds
+      .map((id) => set.terms.find((term) => term.id === id))
+      .filter((term): term is Term => Boolean(term));
+    return deck.length > 0 ? { ...saved, deck } : null;
+  }, [sessionKey, set.terms]);
+
+  const [deck, setDeck] = useState<Term[]>(() => restored?.deck ?? [...set.terms]);
+  const [index, setIndex] = useState(() =>
+    restored ? Math.min(restored.index, Math.max(0, restored.deck.length - 1)) : 0,
+  );
+  const [flipped, setFlipped] = useState(restored?.flipped ?? false);
+  const [known, setKnown] = useState<string[]>(restored?.known ?? []);
+  const [shuffled, setShuffled] = useState(restored?.shuffled ?? false);
+
+  useEffect(() => {
+    writeSession(sessionKey, {
+      deckIds: deck.map((term) => term.id),
+      index,
+      flipped,
+      known,
+      shuffled,
+    });
+  }, [deck, index, flipped, known, shuffled, sessionKey]);
 
   const card = deck[index];
   const progressPct = deck.length > 0 ? Math.round(((index + 1) / deck.length) * 100) : 0;

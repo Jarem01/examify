@@ -7,6 +7,7 @@ import { buildLearnQuestion } from '@/lib/questions';
 import type { Question, SetProgress, Settings, StudySet, Term } from '@/lib/types';
 import { speak } from '@/lib/utils';
 import { playFeedback } from '@/lib/sfx';
+import { clearSession, readSession, writeSession } from '@/lib/session';
 import ModeHeader from './ModeHeader';
 import { CheckIcon, FlameIcon, LearnIcon, TrophyIcon, VolumeIcon } from './icons';
 
@@ -14,6 +15,7 @@ interface LearnViewProps {
   set: StudySet;
   settings: Settings;
   progress: SetProgress | undefined;
+  sessionKey: string;
   onAnswer: (termId: string, correct: boolean, streak: number) => void;
   onExit: () => void;
   onSettings: () => void;
@@ -24,7 +26,15 @@ interface FeedbackState {
   detail?: string;
 }
 
-export default function LearnView({ set, settings, progress, onAnswer, onExit, onSettings }: LearnViewProps) {
+export default function LearnView({
+  set,
+  settings,
+  progress,
+  sessionKey,
+  onAnswer,
+  onExit,
+  onSettings,
+}: LearnViewProps) {
   /* Terms already mastered before this session are skipped so the round stays useful. */
   const masteredBefore = useMemo(() => {
     const mastered = new Set<string>();
@@ -34,12 +44,29 @@ export default function LearnView({ set, settings, progress, onAnswer, onExit, o
     return mastered;
   }, []);
 
+  /* Resume the saved round for this set/section if one is still open. */
+  const restoredState = useMemo(() => {
+    const saved = readSession<LearnState>(sessionKey);
+    if (!saved || !Array.isArray(saved.pool) || saved.pool.length === 0) return null;
+    const known = new Set(set.terms.map((term) => term.id));
+    if (saved.pool.some((term) => !known.has(term.id))) return null;
+    return { ...saved, pool: saved.pool.filter((term) => known.has(term.id)) };
+  }, [sessionKey, set.terms]);
+
   const sessionTerms = useMemo(() => {
+    if (restoredState) return restoredState.pool;
     const remaining = set.terms.filter((term) => !masteredBefore.has(term.id));
     return remaining.length > 0 ? remaining : set.terms;
-  }, [set.terms, masteredBefore]);
+  }, [restoredState, set.terms, masteredBefore]);
 
-  const [state, setState] = useState<LearnState>(() => createLearnState(sessionTerms, settings.sectionSize));
+  const [state, setState] = useState<LearnState>(
+    () => restoredState ?? createLearnState(sessionTerms, settings.sectionSize),
+  );
+
+  useEffect(() => {
+    if (state.complete) clearSession(sessionKey);
+    else writeSession(sessionKey, state);
+  }, [state, sessionKey]);
   const [question, setQuestion] = useState<Question | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);

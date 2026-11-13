@@ -1,16 +1,27 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudySet, Term } from '@/lib/types';
 import { formatTime, sample, shuffle } from '@/lib/utils';
 import { playFeedback } from '@/lib/sfx';
+import { readSession, writeSession } from '@/lib/session';
 import ModeHeader from './ModeHeader';
 import { MatchIcon, TimerIcon } from './icons';
 
 interface MatchViewProps {
   set: StudySet;
   sound: boolean;
+  sessionKey: string;
   onExit: () => void;
+}
+
+interface SavedMatch {
+  phase: Phase;
+  tiles: Tile[];
+  matched: string[];
+  moves: number;
+  penalty: number;
+  elapsed: number;
 }
 
 interface Tile {
@@ -33,21 +44,47 @@ function buildBoard(pairs: Term[]): Tile[] {
   );
 }
 
-export default function MatchView({ set, sound, onExit }: MatchViewProps) {
-  const [phase, setPhase] = useState<Phase>('ready');
+export default function MatchView({ set, sound, sessionKey, onExit }: MatchViewProps) {
+  const restored = useMemo(() => {
+    const saved = readSession<SavedMatch>(sessionKey);
+    if (!saved || !Array.isArray(saved.tiles) || saved.tiles.length === 0) return null;
+    return saved;
+  }, [sessionKey]);
+  const resumable = restored?.phase === 'playing';
+
+  const [phase, setPhase] = useState<Phase>(resumable ? 'playing' : 'ready');
   const [tiles, setTiles] = useState<Tile[]>(() =>
-    buildBoard(sample(set.terms, Math.min(PAIRS, set.terms.length))),
+    resumable && restored ? restored.tiles : buildBoard(sample(set.terms, Math.min(PAIRS, set.terms.length))),
   );
   const [selected, setSelected] = useState<string[]>([]);
-  const [matched, setMatched] = useState<string[]>([]);
+  const [matched, setMatched] = useState<string[]>(resumable && restored ? restored.matched : []);
   const [wrong, setWrong] = useState<string[]>([]);
-  const [moves, setMoves] = useState(0);
-  const [penalty, setPenalty] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
+  const [moves, setMoves] = useState(resumable && restored ? restored.moves : 0);
+  const [penalty, setPenalty] = useState(resumable && restored ? restored.penalty : 0);
+  const [elapsed, setElapsed] = useState(resumable && restored ? restored.elapsed : 0);
   const [finalMs, setFinalMs] = useState(0);
 
   const startedAt = useRef(0);
-  const penaltyRef = useRef(0);
+  const penaltyRef = useRef(resumable && restored ? restored.penalty : 0);
+  const elapsedSeconds = Math.floor(elapsed / 1000);
+
+  /* Pick the clock back up where the saved round left off. */
+  useEffect(() => {
+    if (phase !== 'playing' || startedAt.current !== 0) return;
+    startedAt.current = Date.now() - Math.max(0, elapsed - penaltyRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  useEffect(() => {
+    writeSession(sessionKey, {
+      phase: phase === 'done' ? 'ready' : phase,
+      tiles,
+      matched,
+      moves,
+      penalty,
+      elapsed: elapsedSeconds * 1000,
+    });
+  }, [sessionKey, phase, tiles, matched, moves, penalty, elapsedSeconds]);
 
   const startGame = useCallback(() => {
     const pairs = sample(set.terms, Math.min(PAIRS, set.terms.length));

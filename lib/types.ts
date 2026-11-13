@@ -11,6 +11,12 @@ export interface Term {
   defAudio?: string | null;
 }
 
+export interface SetSection {
+  id: string;
+  name: string;
+  termIds: string[];
+}
+
 export interface StudySet {
   id: string;
   title: string;
@@ -19,6 +25,8 @@ export interface StudySet {
   createdAt: string;
   updatedAt: string;
   terms: Term[];
+  /** Named subsets of this set's cards. */
+  sections?: SetSection[];
 }
 
 export interface SetSummary {
@@ -85,7 +93,14 @@ export type View =
   | { kind: 'home' }
   | { kind: 'search' }
   | { kind: 'set'; setId: string }
-  | { kind: 'mode'; mode: StudyMode; setId: string };
+  | {
+      kind: 'mode';
+      mode: StudyMode;
+      setId: string;
+      /** When set, only these cards are studied. */
+      termIds?: string[];
+      scopeName?: string;
+    };
 
 /* ---------------------------------- questions --------------------------------- */
 

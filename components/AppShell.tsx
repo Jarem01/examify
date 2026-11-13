@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ProgressState,
   SetProgress,
+  SetSection,
   SetSummary,
   Settings,
   StudyMode,
@@ -12,6 +13,7 @@ import type {
   View,
 } from '@/lib/types';
 import { DEFAULT_SETTINGS, loadSettings, resolveAccent, saveSettings } from '@/lib/settings';
+import { readSession, writeSession } from '@/lib/session';
 import {
   createSet,
   deleteSet,
@@ -36,6 +38,7 @@ import ImportModal, { type ImportPayload } from './ImportModal';
 import EditSetModal, { type EditPayload } from './EditSetModal';
 import CombineModal from './CombineModal';
 import SettingsModal from './SettingsModal';
+import SectionModal from './SectionModal';
 import { SearchIcon, SettingsIcon, PlusIcon, SparkIcon } from './icons';
 
 interface PendingPatch {
@@ -61,6 +64,7 @@ export default function AppShell() {
   const [importOpen, setImportOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [combineOpen, setCombineOpen] = useState(false);
+  const [sectionDraft, setSectionDraft] = useState<SetSection | null | undefined>(undefined);
   const [toast, setToast] = useState<string | null>(null);
 
   const pending = useRef<Record<string, PendingPatch>>({});
@@ -116,14 +120,16 @@ export default function AppShell() {
     if (!id) return;
     if (activeSet?.id === id) return;
     let cancelled = false;
-    (async () => {
-      try {
-        const set = await getSet(id);
-        if (!cancelled && set) setActiveSet(set);
-      } catch {
-        if (!cancelled) setToast('Could not load that study set.');
-      }
-    })();
+          (async () => {
+        try {
+          const set = await getSet(id);
+          if (cancelled) return;
+          if (set) setActiveSet(set);
+          else setView({ kind: 'home' });
+        } catch {
+          if (!cancelled) setToast('Could not load that study set.');
+        }
+      })();
     return () => {
       cancelled = true;
     };
@@ -206,8 +212,14 @@ export default function AppShell() {
   }, []);
 
   const openMode = useCallback(
-    (setId: string, mode: StudyMode) => {
-      setView({ kind: 'mode', setId, mode });
+    (setId: string, mode: StudyMode, section?: { termIds: string[]; name: string }) => {
+      setView({
+        kind: 'mode',
+        setId,
+        mode,
+        termIds: section?.termIds,
+        scopeName: section?.name,
+      });
     },
     [],
   );
@@ -350,6 +362,48 @@ export default function AppShell() {
     [activeSet, addSet],
   );
 
+  const handleSaveSection = useCallback(
+    async (section: SetSection) => {
+      if (!activeSet) return;
+      const existing = activeSet.sections ?? [];
+      const sections = existing.some((item) => item.id === section.id)
+        ? existing.map((item) => (item.id === section.id ? section : item))
+        : [...existing, section];
+      try {
+        const updated = await updateSet(activeSet.id, { sections });
+        if (!updated) {
+          setToast('Could not save that section.');
+          return;
+        }
+        setActiveSet(updated);
+        setSectionDraft(undefined);
+        setToast(`Saved section “${section.name}”.`);
+      } catch {
+        setToast('Could not save that section.');
+      }
+    },
+    [activeSet],
+  );
+
+  const handleDeleteSection = useCallback(
+    async (section: SetSection) => {
+      if (!activeSet) return;
+      const sections = (activeSet.sections ?? []).filter((item) => item.id !== section.id);
+      try {
+        const updated = await updateSet(activeSet.id, { sections });
+        if (!updated) {
+          setToast('Could not delete that section.');
+          return;
+        }
+        setActiveSet(updated);
+        setToast(`Deleted section “${section.name}”.`);
+      } catch {
+        setToast('Could not delete that section.');
+      }
+    },
+    [activeSet],
+  );
+
   const navigate = useCallback((next: View) => setView(next), []);
 
   const targetSetId = activeSet?.id ?? sets[0]?.id ?? null;
@@ -366,49 +420,87 @@ export default function AppShell() {
     [targetSetId],
   );
 
+  /* Coming back after a refresh should land on the same screen. */
+  useEffect(() => {
+    if (!ready) return;
+    const saved = readSession<View>('ui:last-view');
+    if (saved && (saved.kind === 'set' || saved.kind === 'mode')) {
+      setView((current) => (current.kind === 'home' ? saved : current));
+    }
+  }, [ready]);
+
+  useEffect(() => {
+    if (view.kind === 'home') return;
+    writeSession('ui:last-view', view);
+  }, [view]);
+
   const accent = resolveAccent(settings);
   const activeProgress = activeSet ? progress.sets[activeSet.id] : undefined;
 
+  /* A mode can be scoped to a subsection, which is just a filtered term list. */
+  const studySet = useMemo<StudySet | null>(() => {
+    if (!activeSet) return null;
+    if (view.kind !== 'mode' || !view.termIds || view.termIds.length === 0) return activeSet;
+    const ids = new Set(view.termIds);
+    const terms = activeSet.terms.filter((term) => ids.has(term.id));
+    if (terms.length === 0) return activeSet;
+    return {
+      ...activeSet,
+      terms,
+      title: view.scopeName ? `${activeSet.title} · ${view.scopeName}` : activeSet.title,
+    };
+  }, [activeSet, view]);
+
+  const sessionKey = useMemo(() => {
+    if (view.kind !== 'mode') return '';
+    const scope = view.termIds && view.termIds.length ? hashScope(view.termIds) : 'all';
+    return `${view.setId}:${view.mode}:${scope}`;
+  }, [view]);
+
   const modeContent = useMemo(() => {
     if (view.kind !== 'mode') return null;
-    if (!activeSet || activeSet.id !== view.setId) return null;
+    if (!studySet || studySet.id !== view.setId) return null;
 
     const exit = () => setView({ kind: 'set', setId: view.setId });
     switch (view.mode) {
       case 'learn':
         return (
           <LearnView
-            set={activeSet}
+            set={studySet}
             settings={settings}
             progress={activeProgress}
-            onAnswer={(termId, correct, streak) => recordAnswer(activeSet.id, termId, correct, streak)}
+            sessionKey={sessionKey}
+            onAnswer={(termId, correct, streak) => recordAnswer(studySet.id, termId, correct, streak)}
             onExit={exit}
             onSettings={() => setSettingsOpen(true)}
           />
         );
       case 'flashcards':
-        return <FlashcardsView set={activeSet} settings={settings} onExit={exit} />;
+        return (
+          <FlashcardsView set={studySet} settings={settings} sessionKey={sessionKey} onExit={exit} />
+        );
       case 'test':
         return (
           <TestView
-            set={activeSet}
+            set={studySet}
             sound={settings.sound}
             direction={settings.direction}
+            sessionKey={sessionKey}
             onExit={exit}
           />
         );
       case 'match':
-        return <MatchView set={activeSet} sound={settings.sound} onExit={exit} />;
+        return <MatchView set={studySet} sound={settings.sound} sessionKey={sessionKey} onExit={exit} />;
       case 'blast':
-        return <BlastView set={activeSet} sound={settings.sound} onExit={exit} />;
+        return <BlastView set={studySet} sound={settings.sound} sessionKey={sessionKey} onExit={exit} />;
       case 'blocks':
-        return <MemoryView set={activeSet} variant="blocks" onExit={exit} />;
+        return <MemoryView set={studySet} variant="blocks" sessionKey={sessionKey} onExit={exit} />;
       case 'charms':
-        return <MemoryView set={activeSet} variant="charms" onExit={exit} />;
+        return <MemoryView set={studySet} variant="charms" sessionKey={sessionKey} onExit={exit} />;
       default:
         return null;
     }
-  }, [view, activeSet, settings, activeProgress, recordAnswer]);
+  }, [view, studySet, settings, activeProgress, recordAnswer, sessionKey]);
 
   if (!ready) {
     return (
@@ -481,7 +573,9 @@ export default function AppShell() {
               <SetView
                 set={activeSet}
                 progress={activeProgress}
-                onMode={(mode) => openMode(activeSet.id, mode)}
+                onMode={(mode, section) => openMode(activeSet.id, mode, section)}
+                onNewSection={(section) => setSectionDraft(section)}
+                onDeleteSection={handleDeleteSection}
                 onImport={() => setImportOpen(true)}
                 onHome={() => setView({ kind: 'home' })}
                 onEdit={() => setEditOpen(true)}
@@ -522,6 +616,15 @@ export default function AppShell() {
         />
       ) : null}
 
+      {sectionDraft !== undefined && activeSet ? (
+        <SectionModal
+          set={activeSet}
+          section={sectionDraft}
+          onClose={() => setSectionDraft(undefined)}
+          onSave={handleSaveSection}
+        />
+      ) : null}
+
       {settingsOpen ? (
         <SettingsModal
           settings={settings}
@@ -538,6 +641,15 @@ export default function AppShell() {
       ) : null}
     </div>
   );
+}
+
+function hashScope(ids: string[]): string {
+  const joined = [...ids].sort().join('|');
+  let hash = 5381;
+  for (let index = 0; index < joined.length; index += 1) {
+    hash = ((hash << 5) + hash + joined.charCodeAt(index)) | 0;
+  }
+  return `s${(hash >>> 0).toString(36)}`;
 }
 
 function LoadingPanel({ label }: { label: string }) {

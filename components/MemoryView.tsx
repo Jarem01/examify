@@ -1,15 +1,25 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StudySet, Term } from '@/lib/types';
 import { formatTime, sample, shuffle } from '@/lib/utils';
+import { readSession, writeSession } from '@/lib/session';
 import ModeHeader from './ModeHeader';
 import { BlocksIcon, CharmsIcon, TimerIcon } from './icons';
 
 interface MemoryViewProps {
   set: StudySet;
   variant: 'blocks' | 'charms';
+  sessionKey: string;
   onExit: () => void;
+}
+
+interface SavedMemory {
+  phase: Phase;
+  cards: MemoryCard[];
+  matched: string[];
+  moves: number;
+  elapsed: number;
 }
 
 interface MemoryCard {
@@ -33,19 +43,45 @@ function buildMemoryBoard(terms: Term[], limit: number): MemoryCard[] {
   );
 }
 
-export default function MemoryView({ set, variant, onExit }: MemoryViewProps) {
+export default function MemoryView({ set, variant, sessionKey, onExit }: MemoryViewProps) {
   const pairCount = variant === 'blocks' ? 8 : 6;
   const columns = 4;
-  const [phase, setPhase] = useState<Phase>('ready');
-  const [cards, setCards] = useState<MemoryCard[]>(() => buildMemoryBoard(set.terms, pairCount));
+  const restored = useMemo(() => {
+    const saved = readSession<SavedMemory>(sessionKey);
+    if (!saved || !Array.isArray(saved.cards) || saved.cards.length === 0) return null;
+    return saved;
+  }, [sessionKey]);
+  const resumable = restored?.phase === 'playing';
+
+  const [phase, setPhase] = useState<Phase>(resumable ? 'playing' : 'ready');
+  const [cards, setCards] = useState<MemoryCard[]>(() =>
+    resumable && restored ? restored.cards : buildMemoryBoard(set.terms, pairCount),
+  );
   const [flipped, setFlipped] = useState<string[]>([]);
-  const [matched, setMatched] = useState<string[]>([]);
-  const [moves, setMoves] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
+  const [matched, setMatched] = useState<string[]>(resumable && restored ? restored.matched : []);
+  const [moves, setMoves] = useState(resumable && restored ? restored.moves : 0);
+  const [elapsed, setElapsed] = useState(resumable && restored ? restored.elapsed : 0);
   const [finalMs, setFinalMs] = useState(0);
 
   const startedAt = useRef(0);
   const lockRef = useRef(false);
+  const elapsedSeconds = Math.floor(elapsed / 1000);
+
+  useEffect(() => {
+    if (phase !== 'playing' || startedAt.current !== 0) return;
+    startedAt.current = Date.now() - elapsed;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  useEffect(() => {
+    writeSession(sessionKey, {
+      phase: phase === 'done' ? 'ready' : phase,
+      cards,
+      matched,
+      moves,
+      elapsed: elapsedSeconds * 1000,
+    });
+  }, [sessionKey, phase, cards, matched, moves, elapsedSeconds]);
 
   const startGame = useCallback(() => {
     setCards(buildMemoryBoard(set.terms, pairCount));

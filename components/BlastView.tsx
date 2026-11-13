@@ -1,17 +1,28 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { pickDistractors } from '@/lib/questions';
 import type { StudySet, Term } from '@/lib/types';
 import { shuffle } from '@/lib/utils';
 import { playFeedback } from '@/lib/sfx';
+import { readSession, writeSession } from '@/lib/session';
 import ModeHeader from './ModeHeader';
 import { BlastIcon } from './icons';
 
 interface BlastViewProps {
   set: StudySet;
   sound: boolean;
+  sessionKey: string;
   onExit: () => void;
+}
+
+interface SavedBlast {
+  phase: Phase;
+  lives: number;
+  score: number;
+  streak: number;
+  answered: number;
+  rock: Rock | null;
 }
 
 interface Rock {
@@ -26,19 +37,32 @@ type Phase = 'ready' | 'playing' | 'transition' | 'over' | 'won';
 const MAX_QUESTIONS = 20;
 const START_LIVES = 3;
 
-export default function BlastView({ set, sound, onExit }: BlastViewProps) {
-  const [phase, setPhase] = useState<Phase>('ready');
-  const [rock, setRock] = useState<Rock | null>(null);
+export default function BlastView({ set, sound, sessionKey, onExit }: BlastViewProps) {
+  /* Unfinished rounds resume from the rock that was falling, not from scratch. */
+  const restored = useMemo(() => {
+    const saved = readSession<SavedBlast>(sessionKey);
+    if (!saved || !saved.rock) return null;
+    if (saved.phase !== 'playing' && saved.phase !== 'transition') return null;
+    if (!set.terms.some((term) => term.id === saved.rock?.term.id)) return null;
+    return saved;
+  }, [sessionKey, set.terms]);
+
+  const [phase, setPhase] = useState<Phase>(restored ? 'playing' : 'ready');
+  const [rock, setRock] = useState<Rock | null>(restored?.rock ?? null);
   const [fall, setFall] = useState(0);
   const [duration, setDuration] = useState(8500);
-  const [lives, setLives] = useState(START_LIVES);
-  const [score, setScore] = useState(0);
-  const [streak, setStreak] = useState(0);
-  const [answered, setAnswered] = useState(0);
+  const [lives, setLives] = useState(restored?.lives ?? START_LIVES);
+  const [score, setScore] = useState(restored?.score ?? 0);
+  const [streak, setStreak] = useState(restored?.streak ?? 0);
+  const [answered, setAnswered] = useState(restored?.answered ?? 0);
   const [flash, setFlash] = useState<{ index: number; correct: boolean } | null>(null);
 
-  const livesRef = useRef(START_LIVES);
-  const answeredRef = useRef(0);
+  const livesRef = useRef(restored?.lives ?? START_LIVES);
+  const answeredRef = useRef(restored?.answered ?? 0);
+
+  useEffect(() => {
+    writeSession(sessionKey, { phase, lives, score, streak, answered, rock });
+  }, [sessionKey, phase, lives, score, streak, answered, rock]);
   const impactRef = useRef<() => void>(() => undefined);
 
   const spawn = useCallback(() => {

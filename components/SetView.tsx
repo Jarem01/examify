@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { SetProgress, StudyMode, StudySet } from '@/lib/types';
+import type { SetProgress, SetSection, StudyMode, StudySet } from '@/lib/types';
 import { pluralize } from '@/lib/utils';
 import { downloadSet, printSet } from '@/lib/setIO';
 import SetMenu from './SetMenu';
@@ -15,12 +15,15 @@ import {
   MatchIcon,
   PlusIcon,
   TestIcon,
+  TrashIcon,
 } from './icons';
 
 interface SetViewProps {
   set: StudySet;
   progress: SetProgress | undefined;
-  onMode: (mode: StudyMode) => void;
+  onMode: (mode: StudyMode, section?: { termIds: string[]; name: string }) => void;
+  onNewSection: (section: SetSection | null) => void;
+  onDeleteSection: (section: SetSection) => void;
   onImport: () => void;
   onHome: () => void;
   onEdit: () => void;
@@ -54,6 +57,8 @@ export default function SetView({
   set,
   progress,
   onMode,
+  onNewSection,
+  onDeleteSection,
   onImport,
   onHome,
   onEdit,
@@ -69,6 +74,8 @@ export default function SetView({
   );
   const pct = set.terms.length ? Math.round((mastered / set.terms.length) * 100) : 0;
   const visibleTerms = showAll ? set.terms : set.terms.slice(0, 40);
+  const termIds = useMemo(() => new Set(set.terms.map((term) => term.id)), [set.terms]);
+  const sections = set.sections ?? [];
 
   return (
     <div>
@@ -149,6 +156,71 @@ export default function SetView({
           );
         })}
       </div>
+
+      <div className="section-head">
+        <div>
+          <h2 className="h2">Sections</h2>
+          <p className="muted small" style={{ marginTop: 4 }}>
+            Group cards inside this set and study just that group.
+          </p>
+        </div>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => onNewSection(null)}>
+          <PlusIcon size={14} /> New section
+        </button>
+      </div>
+
+      {sections.length === 0 ? (
+        <div className="empty" style={{ marginBottom: 26 }}>
+          No sections yet. Create one to study a slice of this set — for example “Exam 2 only”.
+        </div>
+      ) : (
+        <div style={{ marginBottom: 26 }}>
+          {sections.map((section) => {
+            const ids = section.termIds.filter((id) => termIds.has(id));
+            const learned = ids.filter((id) => progress?.terms[id]?.learned).length;
+            return (
+              <div className="section-row" key={section.id}>
+                <div style={{ minWidth: 0 }}>
+                  <div className="section-name">{section.name}</div>
+                  <div className="small muted">
+                    {ids.length} cards · {learned} learned
+                  </div>
+                </div>
+                <div className="row wrap" style={{ gap: 6 }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    disabled={ids.length === 0}
+                    onClick={() => onMode('learn', { termIds: ids, name: section.name })}
+                  >
+                    <LearnIcon size={14} /> Learn
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={ids.length === 0}
+                    onClick={() => onMode('test', { termIds: ids, name: section.name })}
+                  >
+                    <TestIcon size={14} /> Test
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => onNewSection(section)}>
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label={`Delete section ${section.name}`}
+                    title="Delete section"
+                    onClick={() => onDeleteSection(section)}
+                  >
+                    <TrashIcon size={15} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="section-head">
         <div>
