@@ -169,12 +169,12 @@ export default function SettingsModal({ settings, onChange, onClose }: SettingsM
             </div>
             <div className="settings-row">
               <div>
-                <div className="label">Text-to-speech</div>
-                <div className="desc">Read cards aloud with your device voice.</div>
+                <div className="label">Sound</div>
+                <div className="desc">Correct/incorrect tones and spoken cards.</div>
               </div>
               <Switch
                 checked={settings.sound}
-                label="Text to speech"
+                label="Sound"
                 onToggle={() => onChange({ sound: !settings.sound })}
               />
             </div>
