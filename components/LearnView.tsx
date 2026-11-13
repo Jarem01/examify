@@ -24,6 +24,7 @@ interface LearnViewProps {
   settings: Settings;
   progress: SetProgress | undefined;
   sessionKey: string;
+  scopeName?: string;
   onAnswer: (termId: string, correct: boolean, streak: number) => void;
   onExit: () => void;
   onSettings: () => void;
@@ -39,11 +40,17 @@ export default function LearnView({
   settings,
   progress,
   sessionKey,
+  scopeName,
   onAnswer,
   onExit,
   onSettings,
 }: LearnViewProps) {
-  /* Terms already mastered before this session are skipped so the round stays useful. */
+  /*
+   * Terms already mastered before this session are skipped so the round stays useful.
+   * Only cards in this study scope count, so a section's ring never inherits mastery
+   * from other sections. AppShell keys this view by scope, so the baseline is rebuilt
+   * whenever the studied section or set changes.
+   */
   const masteredBefore = useMemo(() => {
     const inScope = new Set(set.terms.map((term) => term.id));
     const mastered = new Set<string>();
@@ -235,7 +242,16 @@ export default function LearnView({
           aria-valuenow={pct}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label={`Set mastery: ${masteredTotal} of ${total} terms learned`}
+          aria-label={
+            scopeName
+              ? `Section mastery: ${masteredTotal} of ${total} terms in ${scopeName} learned`
+              : `Set mastery: ${masteredTotal} of ${total} terms learned`
+          }
+          title={
+            scopeName
+              ? `${masteredTotal} of ${total} cards in this section are mastered`
+              : `${masteredTotal} of ${total} cards in this set are mastered`
+          }
         >
           <div className="ring-inner">
             <div className="ring-value">
@@ -284,7 +300,8 @@ export default function LearnView({
             </div>
             <h2 className="h2">Set complete</h2>
             <p className="muted" style={{ marginTop: 8 }}>
-              You worked through every round. {masteredTotal} of {total} terms are now marked learned.
+              You worked through every round. {masteredTotal} of {total} terms
+              {scopeName ? ' in this section' : ''} are now marked learned.
             </p>
             <div className="row" style={{ justifyContent: 'center', marginTop: 20, gap: 10 }}>
               <span className="chip chip-good">{state.correct} correct</span>

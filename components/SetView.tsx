@@ -95,7 +95,9 @@ export default function SetView({
           </p>
           <div className="row wrap" style={{ marginTop: 16, gap: 8 }}>
             <span className="chip">{set.terms.length} terms</span>
-            <span className={mastered > 0 ? 'chip chip-good' : 'chip'}>{mastered} learned</span>
+            <span className={mastered > 0 ? 'chip chip-good' : 'chip'}>
+              {mastered} of {set.terms.length} learned
+            </span>
             <span className="chip">{pct}% mastered</span>
           </div>
         </div>
@@ -183,7 +185,7 @@ export default function SetView({
                 <div style={{ minWidth: 0 }}>
                   <div className="section-name">{section.name}</div>
                   <div className="small muted">
-                    {ids.length} cards · {learned} learned
+                    {ids.length} cards · {learned}/{ids.length} mastered
                   </div>
                 </div>
                 <div className="row wrap" style={{ gap: 6 }}>

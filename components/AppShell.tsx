@@ -471,10 +471,12 @@ export default function AppShell() {
       case 'learn':
         return (
           <LearnView
+            key={sessionKey}
             set={studySet}
             settings={settings}
             progress={activeProgress}
             sessionKey={sessionKey}
+            scopeName={view.scopeName}
             onAnswer={(termId, correct, streak) => recordAnswer(studySet.id, termId, correct, streak)}
             onExit={exit}
             onSettings={() => setSettingsOpen(true)}
@@ -482,11 +484,12 @@ export default function AppShell() {
         );
       case 'flashcards':
         return (
-          <FlashcardsView set={studySet} settings={settings} sessionKey={sessionKey} onExit={exit} />
+          <FlashcardsView key={sessionKey} set={studySet} settings={settings} sessionKey={sessionKey} onExit={exit} />
         );
       case 'test':
         return (
           <TestView
+            key={sessionKey}
             set={studySet}
             sound={settings.sound}
             direction={settings.direction}
@@ -495,13 +498,13 @@ export default function AppShell() {
           />
         );
       case 'match':
-        return <MatchView set={studySet} sound={settings.sound} sessionKey={sessionKey} onExit={exit} />;
+        return <MatchView key={sessionKey} set={studySet} sound={settings.sound} sessionKey={sessionKey} onExit={exit} />;
       case 'blast':
-        return <BlastView set={studySet} sound={settings.sound} sessionKey={sessionKey} onExit={exit} />;
+        return <BlastView key={sessionKey} set={studySet} sound={settings.sound} sessionKey={sessionKey} onExit={exit} />;
       case 'blocks':
-        return <MemoryView set={studySet} variant="blocks" sessionKey={sessionKey} onExit={exit} />;
+        return <MemoryView key={sessionKey} set={studySet} variant="blocks" sessionKey={sessionKey} onExit={exit} />;
       case 'charms':
-        return <MemoryView set={studySet} variant="charms" sessionKey={sessionKey} onExit={exit} />;
+        return <MemoryView key={sessionKey} set={studySet} variant="charms" sessionKey={sessionKey} onExit={exit} />;
       default:
         return null;
     }
