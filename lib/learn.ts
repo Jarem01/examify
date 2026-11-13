@@ -31,7 +31,8 @@ export interface LearnState {
   missed: number;
   streak: number;
   bestStreak: number;
-  retryNotice: boolean;
+  /** Cards being re-asked after a miss in this leg; the retry banner belongs to these. */
+  retryIds: string[];
   sectionDone: boolean;
   complete: boolean;
   /** True once the initial legs are done and we are cycling through unmastered terms. */
@@ -83,6 +84,8 @@ export function restoreLearnState(saved: SavedLearnState, terms: Term[]): LearnS
   const rest = { ...saved } as Partial<SavedLearnState>;
   delete rest.poolIds;
   delete rest.sectionIds;
+  // Rounds saved before the banner became per-card have no retryIds.
+  if (!Array.isArray(rest.retryIds)) rest.retryIds = [];
   return { ...(rest as Omit<LearnState, 'pool' | 'sections'>), pool, sections };
 }
 
@@ -113,7 +116,7 @@ export function createLearnState(
     missed: 0,
     streak: 0,
     bestStreak: 0,
-    retryNotice: false,
+    retryIds: [],
     sectionDone: sections.length === 0,
     complete: sections.length === 0,
     reviewRound: false,
@@ -154,7 +157,7 @@ export function applyLearnAnswer(state: LearnState, termId: string, isCorrect: b
   const retryQueue = isCorrect ? [...state.retryQueue] : [...state.retryQueue, termId];
 
   let pass = state.pass;
-  let retryNotice = false;
+  let retryIds = state.retryIds;
   let sectionDone = state.sectionDone;
   let workingQueue = queue;
   let workingRetry = retryQueue;
@@ -164,10 +167,11 @@ export function applyLearnAnswer(state: LearnState, termId: string, isCorrect: b
       workingQueue = shuffle(workingRetry);
       workingRetry = [];
       pass += 1;
-      retryNotice = true;
+      // The banner follows the cards that come back, not the leg that just ended.
+      retryIds = [...workingQueue];
     } else {
       sectionDone = true;
-      retryNotice = false;
+      retryIds = [];
     }
   }
 
@@ -184,7 +188,7 @@ export function applyLearnAnswer(state: LearnState, termId: string, isCorrect: b
       missed: state.missed + (isCorrect ? 0 : 1),
       streak: isCorrect ? state.streak + 1 : 0,
       bestStreak: Math.max(state.bestStreak, isCorrect ? state.streak + 1 : 0),
-      retryNotice,
+      retryIds,
       sectionDone,
       complete: sectionDone && state.learned.length + (learnedNow ? 1 : 0) >= state.pool.length,
     },
@@ -209,7 +213,7 @@ export function nextSection(state: LearnState): LearnState {
       queue: shuffle(state.sections[sectionIndex] ?? []).map((term) => term.id),
       retryQueue: [],
       pass: 1,
-      retryNotice: false,
+      retryIds: [],
       sectionDone: false,
       complete: false,
     };
@@ -217,7 +221,7 @@ export function nextSection(state: LearnState): LearnState {
 
   const remaining = state.pool.filter((term) => !state.learned.includes(term.id));
   if (remaining.length === 0) {
-    return { ...state, complete: true, sectionDone: true, retryNotice: false };
+    return { ...state, complete: true, sectionDone: true, retryIds: [] };
   }
 
   const size = state.sections[0]?.length ?? LEARN_SECTION_MIN;
@@ -229,15 +233,11 @@ export function nextSection(state: LearnState): LearnState {
     queue: (sections[0] ?? []).map((term) => term.id),
     retryQueue: [],
     pass: 1,
-    retryNotice: false,
+    retryIds: [],
     sectionDone: false,
     complete: false,
     reviewRound: true,
   };
-}
-
-export function dismissRetryNotice(state: LearnState): LearnState {
-  return { ...state, retryNotice: false };
 }
 
 /** Mark a term learned/not learned by hand (used when skipping). */

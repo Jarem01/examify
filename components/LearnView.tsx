@@ -339,7 +339,7 @@ export default function LearnView({
         </section>
       ) : question ? (
         <section className="learn-card">
-          {state.retryNotice ? (
+          {state.retryIds.includes(question.termId) ? (
             <div className="retry-banner" role="status">
               <FlameIcon size={16} />
               You missed this question — let&apos;s try it again.
