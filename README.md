@@ -17,8 +17,10 @@ Production build:
 
 ```bash
 npm run build   # writes a static site to out/
-npm start       # or serve out/ with any static file server
+npx serve out   # then open the URL it prints
 ```
+
+`next start` does not work with a static export — serve the `out/` directory with any static file server (`npx serve out`, `python3 -m http.server -d out 3000`, or a real host).
 
 ## How hosting works
 
@@ -75,4 +77,3 @@ lib/            seed data, browser store, question builders, learn engine, parse
 | --- | --- |
 | `npm run dev` | Development server with hot reload |
 | `npm run build` | Static export into `out/` |
-| `npm start` | Serve the production output |
