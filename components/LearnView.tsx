@@ -1,8 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { LearnState } from '@/lib/learn';
-import { applyLearnAnswer, createLearnState, currentTerm, nextSection } from '@/lib/learn';
+import type { LearnState, SavedLearnState } from '@/lib/learn';
+import {
+  applyLearnAnswer,
+  createLearnState,
+  currentTerm,
+  nextSection,
+  restoreLearnState,
+  serializeLearnState,
+} from '@/lib/learn';
 import { buildLearnQuestion } from '@/lib/questions';
 import type { Question, SetProgress, Settings, StudySet, Term } from '@/lib/types';
 import { speak } from '@/lib/utils';
@@ -46,11 +53,9 @@ export default function LearnView({
 
   /* Resume the saved round for this set/section if one is still open. */
   const restoredState = useMemo(() => {
-    const saved = readSession<LearnState>(sessionKey);
-    if (!saved || !Array.isArray(saved.pool) || saved.pool.length === 0) return null;
-    const known = new Set(set.terms.map((term) => term.id));
-    if (saved.pool.some((term) => !known.has(term.id))) return null;
-    return { ...saved, pool: saved.pool.filter((term) => known.has(term.id)) };
+    const saved = readSession<SavedLearnState>(sessionKey);
+    if (!saved) return null;
+    return restoreLearnState(saved, set.terms);
   }, [sessionKey, set.terms]);
 
   const sessionTerms = useMemo(() => {
@@ -65,7 +70,7 @@ export default function LearnView({
 
   useEffect(() => {
     if (state.complete) clearSession(sessionKey);
-    else writeSession(sessionKey, state);
+    else writeSession(sessionKey, serializeLearnState(state));
   }, [state, sessionKey]);
   const [question, setQuestion] = useState<Question | null>(null);
   const [selected, setSelected] = useState<number[]>([]);

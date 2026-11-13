@@ -16,13 +16,20 @@ interface BlastViewProps {
   onExit: () => void;
 }
 
+interface SavedRock {
+  termId: string;
+  /** The four option definitions, referenced by the term they belong to. */
+  optionIds: string[];
+  answer: number;
+}
+
 interface SavedBlast {
   phase: Phase;
   lives: number;
   score: number;
   streak: number;
   answered: number;
-  rock: Rock | null;
+  rock: SavedRock | null;
 }
 
 interface Rock {
@@ -43,8 +50,18 @@ export default function BlastView({ set, sound, sessionKey, onExit }: BlastViewP
     const saved = readSession<SavedBlast>(sessionKey);
     if (!saved || !saved.rock) return null;
     if (saved.phase !== 'playing' && saved.phase !== 'transition') return null;
-    if (!set.terms.some((term) => term.id === saved.rock?.term.id)) return null;
-    return saved;
+    const byId = new Map(set.terms.map((term) => [term.id, term]));
+    const term = byId.get(saved.rock.termId);
+    if (!term) return null;
+    const options: string[] = [];
+    for (const id of saved.rock.optionIds) {
+      const option = byId.get(id);
+      if (!option) return null;
+      options.push(option.definition);
+    }
+    if (options.length === 0) return null;
+    const rock: Rock = { id: Date.now(), term, options, answer: saved.rock.answer };
+    return { ...saved, rock };
   }, [sessionKey, set.terms]);
 
   const [phase, setPhase] = useState<Phase>(restored ? 'playing' : 'ready');
@@ -61,8 +78,14 @@ export default function BlastView({ set, sound, sessionKey, onExit }: BlastViewP
   const answeredRef = useRef(restored?.answered ?? 0);
 
   useEffect(() => {
-    writeSession(sessionKey, { phase, lives, score, streak, answered, rock });
-  }, [sessionKey, phase, lives, score, streak, answered, rock]);
+    const definitionToTerm = new Map(set.terms.map((term) => [term.definition, term.id]));
+    const optionIds = rock ? rock.options.map((option) => definitionToTerm.get(option) ?? '') : [];
+    const savedRock =
+      rock && optionIds.every(Boolean)
+        ? { termId: rock.term.id, optionIds, answer: rock.answer }
+        : null;
+    writeSession(sessionKey, { phase, lives, score, streak, answered, rock: savedRock });
+  }, [sessionKey, phase, lives, score, streak, answered, rock, set.terms]);
   const impactRef = useRef<() => void>(() => undefined);
 
   const spawn = useCallback(() => {

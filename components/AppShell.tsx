@@ -13,7 +13,7 @@ import type {
   View,
 } from '@/lib/types';
 import { DEFAULT_SETTINGS, loadSettings, resolveAccent, saveSettings } from '@/lib/settings';
-import { readSession, writeSession } from '@/lib/session';
+import { clearSessionsForSet, readSession, writeSession } from '@/lib/session';
 import {
   createSet,
   deleteSet,
@@ -323,6 +323,7 @@ export default function AppShell() {
       return;
     }
     setSets((prev) => prev.filter((item) => item.id !== id));
+    clearSessionsForSet(id);
     setActiveSet(null);
     setView({ kind: 'home' });
     setToast(`Deleted “${title}”.`);
@@ -421,18 +422,22 @@ export default function AppShell() {
   );
 
   /* Coming back after a refresh should land on the same screen. */
+  const [viewRestored, setViewRestored] = useState(false);
+
   useEffect(() => {
     if (!ready) return;
     const saved = readSession<View>('ui:last-view');
     if (saved && (saved.kind === 'set' || saved.kind === 'mode')) {
       setView((current) => (current.kind === 'home' ? saved : current));
     }
+    setViewRestored(true);
   }, [ready]);
 
   useEffect(() => {
-    if (view.kind === 'home') return;
+    // Home is remembered too, so reopening after going home does not jump back into a mode.
+    if (!viewRestored) return;
     writeSession('ui:last-view', view);
-  }, [view]);
+  }, [view, viewRestored]);
 
   const accent = resolveAccent(settings);
   const activeProgress = activeSet ? progress.sets[activeSet.id] : undefined;

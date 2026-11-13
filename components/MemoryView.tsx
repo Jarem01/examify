@@ -16,7 +16,8 @@ interface MemoryViewProps {
 
 interface SavedMemory {
   phase: Phase;
-  cards: MemoryCard[];
+  /** Card text is rebuilt from the set, so the session stores ids only. */
+  cards: { key: string; termId: string; side: MemoryCard['side'] }[];
   matched: string[];
   moves: number;
   elapsed: number;
@@ -49,8 +50,20 @@ export default function MemoryView({ set, variant, sessionKey, onExit }: MemoryV
   const restored = useMemo(() => {
     const saved = readSession<SavedMemory>(sessionKey);
     if (!saved || !Array.isArray(saved.cards) || saved.cards.length === 0) return null;
-    return saved;
-  }, [sessionKey]);
+    const byId = new Map(set.terms.map((term) => [term.id, term]));
+    const cards: MemoryCard[] = [];
+    for (const card of saved.cards) {
+      const term = byId.get(card.termId);
+      if (!term) return null;
+      cards.push({
+        key: card.key,
+        termId: card.termId,
+        side: card.side,
+        text: card.side === 'term' ? term.term : term.definition,
+      });
+    }
+    return { ...saved, cards };
+  }, [sessionKey, set.terms]);
   const resumable = restored?.phase === 'playing';
 
   const [phase, setPhase] = useState<Phase>(resumable ? 'playing' : 'ready');
@@ -76,7 +89,7 @@ export default function MemoryView({ set, variant, sessionKey, onExit }: MemoryV
   useEffect(() => {
     writeSession(sessionKey, {
       phase: phase === 'done' ? 'ready' : phase,
-      cards,
+      cards: cards.map(({ key, termId, side }) => ({ key, termId, side })),
       matched,
       moves,
       elapsed: elapsedSeconds * 1000,

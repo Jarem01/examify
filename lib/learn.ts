@@ -38,6 +38,54 @@ export interface LearnState {
   reviewRound: boolean;
 }
 
+/**
+ * Serialized form for storage: card ids instead of full card text, so a saved
+ * round never duplicates the whole term list.
+ */
+export type SavedLearnState = Omit<LearnState, 'pool' | 'sections'> & {
+  poolIds: string[];
+  sectionIds: string[][];
+};
+
+export function serializeLearnState(state: LearnState): SavedLearnState {
+  const { pool, sections, ...rest } = state;
+  return {
+    ...rest,
+    poolIds: pool.map((term) => term.id),
+    sectionIds: sections.map((section) => section.map((term) => term.id)),
+  };
+}
+
+/** Rebuild a saved round against the set's current cards, or null if it drifted. */
+export function restoreLearnState(saved: SavedLearnState, terms: Term[]): LearnState | null {
+  if (!Array.isArray(saved.poolIds) || !Array.isArray(saved.sectionIds)) return null;
+  const byId = new Map(terms.map((term) => [term.id, term]));
+
+  const pool: Term[] = [];
+  for (const id of saved.poolIds) {
+    const term = byId.get(id);
+    if (!term) return null;
+    pool.push(term);
+  }
+  if (pool.length === 0) return null;
+
+  const sections: Term[][] = [];
+  for (const ids of saved.sectionIds) {
+    const section: Term[] = [];
+    for (const id of ids) {
+      const term = byId.get(id);
+      if (!term) return null;
+      section.push(term);
+    }
+    sections.push(section);
+  }
+
+  const rest = { ...saved } as Partial<SavedLearnState>;
+  delete rest.poolIds;
+  delete rest.sectionIds;
+  return { ...(rest as Omit<LearnState, 'pool' | 'sections'>), pool, sections };
+}
+
 export function createLearnState(terms: Term[], size: number): LearnState {
   const sections = buildSections(terms, size);
   return {

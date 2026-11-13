@@ -17,7 +17,8 @@ interface MatchViewProps {
 
 interface SavedMatch {
   phase: Phase;
-  tiles: Tile[];
+  /** Tile text is rebuilt from the set, so the session stores ids only. */
+  tiles: { key: string; termId: string; kind: Tile['kind'] }[];
   matched: string[];
   moves: number;
   penalty: number;
@@ -48,8 +49,20 @@ export default function MatchView({ set, sound, sessionKey, onExit }: MatchViewP
   const restored = useMemo(() => {
     const saved = readSession<SavedMatch>(sessionKey);
     if (!saved || !Array.isArray(saved.tiles) || saved.tiles.length === 0) return null;
-    return saved;
-  }, [sessionKey]);
+    const byId = new Map(set.terms.map((term) => [term.id, term]));
+    const tiles: Tile[] = [];
+    for (const tile of saved.tiles) {
+      const term = byId.get(tile.termId);
+      if (!term) return null;
+      tiles.push({
+        key: tile.key,
+        termId: tile.termId,
+        kind: tile.kind,
+        text: tile.kind === 'term' ? term.term : term.definition,
+      });
+    }
+    return { ...saved, tiles };
+  }, [sessionKey, set.terms]);
   const resumable = restored?.phase === 'playing';
 
   const [phase, setPhase] = useState<Phase>(resumable ? 'playing' : 'ready');
@@ -78,7 +91,7 @@ export default function MatchView({ set, sound, sessionKey, onExit }: MatchViewP
   useEffect(() => {
     writeSession(sessionKey, {
       phase: phase === 'done' ? 'ready' : phase,
-      tiles,
+      tiles: tiles.map(({ key, termId, kind }) => ({ key, termId, kind })),
       matched,
       moves,
       penalty,
